@@ -1,0 +1,15 @@
+{
+  "title": "noodles at 3 a.m.",
+  "category": "art-styles",
+  "date": "2026-11-13",
+  "summary": "A neon street in the rain, painted in front of you one brush mark at a time.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "javascript drawing, canvas 2d, single file",
+  "tags": ["javascript drawing", "painterly", "cyberpunk", "night"],
+  "specs": {
+    "marks": "about 60,000 per painting",
+    "libraries": "none",
+    "inspired by": "Kevin Ngo's JavaScript drawings (x.com/kevin_t_ngo)"
+  }
+}
