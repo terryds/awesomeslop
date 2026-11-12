@@ -163,18 +163,23 @@ function wire3(a,c,sag,col){let prev=null;for(let t=0;t<=1;t+=.002){const X=a[0]
   const p=P(X,Y,z);if(prev)line(b,prev[0],prev[1],p[0],p[1],col);prev=p}}
 for(let i=0;i<poles.length-1;i++)for(const[dx,yy]of[[-1.1,7.65],[1.1,7.65],[-.7,6.95],[.7,6.95]])wire3([PX+dx,yy,poles[i]],[PX+dx,yy,poles[i+1]],.35,'#2b3142');
 for(const[dx,yy]of[[-1.1,7.65],[1.1,7.65],[-.7,6.95]])wire3([PX+dx,yy,poles[0]],[PX+dx*2,yy+.5,.6],.2,'#2b3142');
-wire3([PX-1.1,7.65,poles[1]],[-4.6,6,8],.5,'#2b3142');wire3([PX-.7,6.95,poles[2]],[-4.6,6,18],.4,'#2b3142');
-wire3([PX-1.1,7.65,poles[0]],[-4.6,6.5,3],.4,'#2b3142');
+wire3([PX-1.1,7.65,poles[1]],[-4.6,4.3,8],.5,'#2b3142');wire3([PX-.7,6.95,poles[2]],[-4.6,4.3,18],.4,'#2b3142');
+wire3([PX-1.1,7.65,poles[0]],[-1.7,6.95,6],.4,'#2b3142');
 
-// left pole near the wall (the guy leans on it)
-{const z=6,X=-2.6,sc=F/z,[x,yb]=P(X,0,z),[,yt]=P(X,8.2,z);
+// left poles (the guy leans on the nearest one), each wire ends on a crossarm or a house wall
+function leftPole(z){const X=-2.6,sc=F/z,[x,yb]=P(X,0,z),[,yt]=P(X,8.2,z);
   rect(b,x-.13*sc,yt,.26*sc,yb-yt,'#767b86');rect(b,x+.04*sc,yt,.09*sc,yb-yt,'#585c66');rect(b,x-.13*sc,yt,.05*sc+1,yb-yt,'#9097a3');
+  rect(b,x-.15*sc,yt-.12*sc,.3*sc,.14*sc,'#ffffff');
   const[,ya]=P(X,6.9,z);rect(b,x-.9*sc,ya,1.8*sc,.1*sc,'#555a64');rect(b,x-.9*sc,ya-.05*sc,1.8*sc,.05*sc+1,'#ffffff');
   const[,yp]=P(X,2.2,z);rect(b,x-.1*sc,yp,.2*sc,.35*sc,'#e9e3c8');rect(b,x-.08*sc,yp+.08*sc,.16*sc,1,'#6b6f7a');
-  // snow piled at its base
-  ell(b,x,yb,.45*sc,.12*sc,'#ffffff','top');ell(b,x+.1*sc,yb,.3*sc,.05*sc,'#dde9f6','top');
-  wire3([X+.7,6.95,z],[PX-.7,6.95,poles[1]],.6,'#2b3142');wire3([X-.7,6.95,z],[X-.7,6.95,16],.3,'#2b3142');
-  wire3([X+.7,6.95,z],[X+.7,7.5,1.2],.2,'#2b3142');}
+  ell(b,x,yb,.45*sc,.12*sc,'#ffffff','top');ell(b,x+.1*sc,yb,.3*sc,.05*sc,'#dde9f6','top')}
+const LPOLES=[6,16,28];
+for(let i=LPOLES.length-1;i>=0;i--)leftPole(LPOLES[i]);
+for(let i=0;i<LPOLES.length-1;i++)for(const dx of[-.7,.7])wire3([-2.6+dx,6.95,LPOLES[i]],[-2.6+dx,6.95,LPOLES[i+1]],.3,'#2b3142');
+wire3([-1.9,6.95,6],[PX-.7,6.95,poles[1]],.6,'#2b3142');
+wire3([-1.9,6.95,6],[-1.9,7.5,1.2],.2,'#2b3142');wire3([-3.3,6.95,6],[-3.3,7.5,1.2],.2,'#2b3142');
+wire3([-3.3,6.95,16],[-4.6,4.3,15],.15,'#2b3142');
+
 
 
 // ================= CHARACTER =================
