@@ -18,6 +18,16 @@
   // Turns ./arts/* into src/generated/arts.json + public/a/*. Re-runs when ./arts or ./src changes.
   "build": { "command": "node scripts/build-content.mjs", "watch_dir": ["arts", "src"] },
 
+  // PR previews: every branch built by Workers Builds gets its own URL (<branch>-awesomeslop.<subdomain>.workers.dev).
+  // Previews do not inherit production bindings or secrets, so they get their own database: a preview can never
+  // touch the real waitlist. Google sign-in is not configured for previews (its callback address is fixed).
+  "preview_urls": true,
+  "previews": {
+    "d1_databases": [
+      { "binding": "DB", "database_name": "awesomeslop-preview", "database_id": "fe011dda-a230-4918-b97f-947def5337a8", "migrations_dir": "./migrations" }
+    ]
+  },
+
   // Local dev: keep the request URL as localhost. Without this, wrangler dev reports the custom domain above as the
   // host, which breaks the localhost-only dev login and the Google callback address.
   "dev": { "host": "localhost:8787", "upstream_protocol": "http" },
