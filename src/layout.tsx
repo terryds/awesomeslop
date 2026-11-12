@@ -35,6 +35,7 @@ export function Layout({ title, description, user, path, children }: Props) {
             </a>
             <nav class="nav">
               {nav('/', 'gallery')}
+              {user?.admin ? nav('/admin', 'admin') : null}
               {user ? (
                 <form method="post" action="/auth/signout" class="nav-user">
                   <span class="mono dim nav-email">{user.email}</span>

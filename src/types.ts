@@ -7,7 +7,8 @@ export type Bindings = {
   DEV_LOGIN?: string;
 };
 
-export type User = { id: string; email: string; name: string | null; picture: string | null };
+// `admin` is worked out on every request from ADMIN_EMAILS; it is never stored in the session cookie.
+export type User = { id: string; email: string; name: string | null; picture: string | null; admin?: boolean };
 
 export type AppEnv = { Bindings: Bindings; Variables: { user: User | null } };
 

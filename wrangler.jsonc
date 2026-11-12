@@ -18,5 +18,9 @@
   // Turns ./arts/* into src/generated/arts.json + public/a/*. Re-runs when ./arts or ./src changes.
   "build": { "command": "node scripts/build-content.mjs", "watch_dir": ["arts", "src"] },
 
+  // Local dev: keep the request URL as localhost. Without this, wrangler dev reports the custom domain above as the
+  // host, which breaks the localhost-only dev login and the Google callback address.
+  "dev": { "host": "localhost:8787", "upstream_protocol": "http" },
+
   "observability": { "enabled": true }
 }

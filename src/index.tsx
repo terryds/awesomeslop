@@ -9,7 +9,8 @@ const app = new Hono<AppEnv>();
 
 app.use(csrf());
 app.use(async (c, next) => {
-  c.set('user', await currentUser(c));
+  const user = await currentUser(c);
+  c.set('user', user && { ...user, admin: isAdmin(c, user) });
   await next();
 });
 app.route('/auth', auth);

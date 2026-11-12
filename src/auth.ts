@@ -25,7 +25,8 @@ export async function currentUser(c: Ctx): Promise<User | null> {
   const raw = await getSignedCookie(c, secret(c), SESSION);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as User;
+    const { id, email, name, picture } = JSON.parse(raw) as User;
+    return { id, email, name, picture };
   } catch {
     return null;
   }
