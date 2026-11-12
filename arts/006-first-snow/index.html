@@ -1,0 +1,455 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>first snow</title>
+<style>
+html,body{margin:0;height:100%;background:#0d1626;display:flex;align-items:center;justify-content:center;overflow:hidden}
+canvas{image-rendering:pixelated;image-rendering:crisp-edges;height:98vh;max-width:98vw;aspect-ratio:240/426;box-shadow:0 0 50px #000a}
+</style></head><body>
+<canvas id="c" width="240" height="426"></canvas>
+<script>
+const W=240,H=426,cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const VPX=128,HY=196,F=230,EYE=1.5;
+const P=(X,Y,z)=>[VPX+X*F/z,HY+(EYE-Y)*F/z];
+let seed=11;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+function hex(h){const n=parseInt(h.slice(1),16);return[n>>16,(n>>8)&255,n&255]}
+function sh(h,a){const[r,g,b]=hex(h);const c=v=>Math.max(0,Math.min(255,Math.round(v+a)));return'#'+((1<<24)+(c(r)<<16)+(c(g)<<8)+c(b)).toString(16).slice(1)}
+function mk(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
+// drawing primitives on a given context
+function rect(g,x,y,w,h,col){g.fillStyle=col;g.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h))}
+function poly(g,pts,col){g.fillStyle=col;let y0=Infinity,y1=-Infinity;for(const p of pts){y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}
+  y0=Math.max(-2,Math.floor(y0));y1=Math.min(g.canvas.height+2,Math.ceil(y1));
+  for(let y=y0;y<y1;y++){const yc=y+.5,xs=[];for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];
+    if((a[1]<=yc&&b[1]>yc)||(b[1]<=yc&&a[1]>yc))xs.push(a[0]+(yc-a[1])/(b[1]-a[1])*(b[0]-a[0]))}
+    xs.sort((a,b)=>a-b);for(let i=0;i+1<xs.length;i+=2){const xa=Math.round(xs[i]),xb=Math.round(xs[i+1]);if(xb>xa)g.fillRect(xa,y,xb-xa,1)}}}
+function ell(g,cx,cy,rx,ry,col,half){g.fillStyle=col;for(let y=-Math.ceil(ry);y<=Math.ceil(ry);y++){if(half==='top'&&y>0)break;if(half==='bot'&&y<0)continue;
+  const v=1-(y/ry)**2;if(v<0)continue;const w=rx*Math.sqrt(v);g.fillRect(Math.round(cx-w),Math.round(cy+y),Math.round(2*w)||1,1)}}
+function line(g,x0,y0,x1,y1,col){g.fillStyle=col;const n=Math.max(Math.abs(x1-x0),Math.abs(y1-y0))|0||1;for(let i=0;i<=n;i++)g.fillRect(Math.round(x0+(x1-x0)*i/n),Math.round(y0+(y1-y0)*i/n),1,1)}
+function dpoly(g,pts,c1,c2,lvl){ // dithered polygon mix of c1/c2 with level 0..16
+  const tmp=mk(W,H),t=tmp.getContext('2d');poly(t,pts,'#fff');const d=t.getImageData(0,0,W,H).data;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(d[(y*W+x)*4+3]){g.fillStyle=BAYER[y&3][x&3]<lvl?c2:c1;g.fillRect(x,y,1,1)}}
+
+// ================= STATIC BACKGROUND =================
+const bg=mk(W,H),b=bg.getContext('2d');
+// sky
+const skyStops=['#2a63c9','#3473d6','#3f84e0','#5096e8','#66a8ee','#82bcf2','#a3d0f6','#c4e2fa'];
+for(let y=0;y<HY+4;y++){const t=y/(HY+4)*(skyStops.length-1),i=Math.floor(t),f=(t-i)*16;
+  for(let x=0;x<W;x++){b.fillStyle=skyStops[Math.min(skyStops.length-1,i+(BAYER[y&3][x&3]<f?1:0))];b.fillRect(x,y,1,1)}}
+// soft clouds
+seed=5;for(let k=0;k<5;k++){const cx=rnd()*W,cy=30+rnd()*90,s=10+rnd()*14;
+  for(let j=0;j<6;j++){const ox=(rnd()-.5)*s*2.4,oy=(rnd()-.5)*s*.5,r=s*(.5+rnd()*.5);
+    ell(b,cx+ox,cy+oy,r,r*.45,'#d8ecfc');ell(b,cx+ox,cy+oy+r*.18,r*.9,r*.3,'#b7d6f4')}}
+// distant mountains
+for(let x=0;x<W;x++){const h=HY-14-Math.sin(x*.035+1)*7-Math.sin(x*.11)*3-Math.max(0,22-Math.abs(x-60)*.6);
+  rect(b,x,h,1,HY-h+2,'#a9c6e3');rect(b,x,h,1,2,'#eef6fd');if(x%9<4)rect(b,x,h+5,1,2,'#c4d9ee')}
+// distant town blocks along horizon
+seed=9;for(let i=0;i<26;i++){const z=34+rnd()*60,X=(rnd()<.5?-1:1)*(4+rnd()*10),w=3+rnd()*5,hh=4+rnd()*6;
+  const[a,y0]=P(X,hh,z),[c,y1]=P(X+w*(X<0?-1:1),0,z);const xl=Math.min(a,c),xr=Math.max(a,c);
+  rect(b,xl,y0,xr-xl,y1-y0,['#8ea9c6','#9db6cf','#a3a9c4'][i%3]);rect(b,xl-1,y0-1,xr-xl+2,2,'#f3f8fd')}
+// ground base (snow), bluer with distance
+for(let y=HY;y<H;y++){const t=(y-HY)/(H-HY);for(let x=0;x<W;x++){const lv=Math.min(16,t*26);
+  b.fillStyle=BAYER[y&3][x&3]<lv?'#f3f8fe':'#dbe8f6';b.fillRect(x,y,1,1)}}
+// road surface: slightly grey-blue packed snow
+{const pts=[P(-2.3,0,1.2),P(2.6,0,1.2),P(2.6,0,80),P(-2.3,0,80)];dpoly(b,pts,'#e6eef8','#d2dff0',5)}
+// tire ruts
+for(const X of[-1.6,-.7,.7,1.6]){for(let z=1.25;z<70;z*=1.012){const[x,y]=P(X,0,z),w=Math.max(1,.22*F/z);
+  rect(b,x-w/2,y,w,Math.max(1,w*.25),'#cfdcec');if(w>3)rect(b,x-w/2,y,1,1,'#bfd0e4')}}
+// shadows on the left side of the road from the wall
+{dpoly(b,[P(-3,0,1.1),P(-1.9,0,1.1),P(-2.6,0,40),P(-3,0,40)],'#dbe8f6','#bcd0ea',9)}
+
+// ---------- right side houses ----------
+function sideFace(X,z1,z2,y0,y1,col){poly(b,[P(X,y1,z1),P(X,y1,z2),P(X,y0,z2),P(X,y0,z1)],col)}
+function frontFace(X1,X2,z,y0,y1,col){poly(b,[P(X1,y1,z),P(X2,y1,z),P(X2,y0,z),P(X1,y0,z)],col)}
+function rightHouse(z1,z2,hgt,wall,trim,opts={}){
+  const X=3.6;
+  // gable front face (facing camera) spans X..X+6
+  frontFace(X,X+7,z1,0,hgt,sh(wall,-18));
+  poly(b,[P(X,hgt,z1),P(X+7,hgt,z1),P(X+3.5,hgt+1.6,z1)],sh(wall,-26));
+  // snow on gable
+  poly(b,[P(X-.3,hgt+.1,z1),P(X+3.5,hgt+1.9,z1),P(X+7.3,hgt+.1,z1),P(X+3.5,hgt+1.55,z1)],'#ffffff');
+  // front windows
+  for(let k=0;k<2;k++){const a=X+1+k*3;frontFace(a,a+1.6,z1,1.2,2.4,opts.lit?'#ffdd93':'#3b5f86');frontFace(a,a+1.6,z1,1.12,1.22,'#ffffff')}
+  // side wall (facing road)
+  sideFace(X,z1,z2,0,hgt,wall);
+  // horizontal siding lines
+  for(let yy=.3;yy<hgt;yy+=.35){const p1=P(X,yy,z1),p2=P(X,yy,z2);line(b,p1[0],p1[1],p2[0],p2[1],sh(wall,-10))}
+  // windows on side
+  for(let z=z1+.8;z<z2-1.2;z+=2.2){for(const[ya,yb]of(hgt>4.5?[[1,2.2],[3.4,4.4]]:[[1,2.2]])){
+    sideFace(X,z,z+1.3,ya-.12,yb+.12,trim);
+    sideFace(X,z+.08,z+1.22,ya,yb,opts.lit&&ya<2?'#ffd88a':'#335a82');
+    const m=P(X,ya,z+.65),mt=P(X,yb,z+.65);line(b,m[0],m[1],mt[0],mt[1],trim);
+    if(!(opts.lit&&ya<2)){const g1=P(X,yb-.2,z+.2),g2=P(X,ya+.4,z+.55);line(b,g1[0],g1[1],g2[0],g2[1],'#6d95bf')}
+    else{const g=P(X,yb-.25,z+.25);rect(b,g[0],g[1],2,2,'#fff4cf')}
+    sideFace(X-.05,z-.05,z+1.35,ya-.25,ya-.1,'#ffffff')}}
+  // door
+  if(opts.door){const z=opts.door;sideFace(X,z,z+1,0,2,'#7a5640');sideFace(X,z+.1,z+.45,.2,1.8,'#8f6a50');
+    sideFace(X-.4,z-.3,z+1.3,2.1,2.3,'#ffffff')}
+  // eave: thick snow slab
+  for(let i=0;i<3;i++)sideFace(X-.6+i*.02,z1-.4,z2+.2,hgt-.05+i*.1,hgt+.35+i*.12,i==0?'#c9dcef':'#ffffff');
+  sideFace(X,z1,z2,hgt-.25,hgt-.05,sh(wall,-40));
+  // icicles
+  for(let z=z1;z<z2;z+=.35){const p=P(X-.55,hgt-.05,z),len=(1+((z*7.3)%3))*F/z*.07;if(len>.6)rect(b,p[0],p[1],Math.max(1,F/z*.03),len,'#e2f2ff')}
+  // AC unit
+  if(opts.ac){const z=opts.ac;sideFace(X-.01,z,z+.9,.3,.95,'#c8ccd4');sideFace(X-.02,z+.15,z+.6,.4,.85,'#9aa1ad');sideFace(X-.05,z-.05,z+.95,.95,1.1,'#ffffff')}
+}
+// far to near
+rightHouse(30,40,5,'#c7b79a','#efe8dc');
+rightHouse(22,29,6,'#9fb3c9','#e6edf4',{lit:true});
+// little shop with awning
+(function(){const X=3.6,z1=15,z2=21;rightHouse(z1,z2,4.2,'#ece3d2','#ffffff',{lit:true});
+  for(let z=z1+.2;z<z2-.2;z+=.5){const i=Math.round((z-z1)/.5)%2;poly(b,[P(X,2.9,z),P(X,2.9,z+.5),P(X-1.1,2.3,z+.5),P(X-1.1,2.3,z)],i?'#e25a5a':'#ffffff')}
+  sideFace(X-1.1,z1+.2,z2-.2,2.12,2.32,'#c94848');
+  sideFace(X-1.1,z1+.2,z2-.2,2.3,2.4,'#ffffff');
+  sideFace(X+.01,z1+.6,z2-.6,3.15,3.75,'#2f6bb3');
+  for(let z=z1+.9;z<z2-.9;z+=.55){const p=P(X,3.3,z);rect(b,p[0],p[1],1,2,'#ffffff')}
+})();
+rightHouse(7.5,14,6.2,'#d8b39a','#f7ede4',{lit:true,ac:9.2});
+rightHouse(2.2,7,6.5,'#b9cbe0','#f4f8fc',{door:3.2,ac:5.6});
+
+// ---------- left: house behind wall, trees ----------
+function leftHouse(z1,z2,hgt,wall,lit){const X=-4.6;
+  poly(b,[P(X,hgt,z1),P(X,hgt,z2),P(X,0,z2),P(X,0,z1)],wall);
+  for(let yy=.3;yy<hgt;yy+=.4){const p1=P(X,yy,z1),p2=P(X,yy,z2);line(b,p1[0],p1[1],p2[0],p2[1],sh(wall,-10))}
+  for(let z=z1+.7;z<z2-1;z+=2){poly(b,[P(X,3.9,z),P(X,3.9,z+1.2),P(X,2.6,z+1.2),P(X,2.6,z)],'#e8e2d6');
+    poly(b,[P(X,3.8,z+.08),P(X,3.8,z+1.12),P(X,2.7,z+1.12),P(X,2.7,z+.08)],lit?'#ffd88a':'#355b84');
+    poly(b,[P(X+.1,2.6,z-.1),P(X+.1,2.6,z+1.3),P(X+.1,2.45,z+1.3),P(X+.1,2.45,z-.1)],'#ffffff')}
+  // roof underside + snow slab
+  poly(b,[P(X,hgt,z1-.5),P(X,hgt,z2+.3),P(X+.9,hgt+.2,z2+.3),P(X+.9,hgt+.2,z1-.5)],sh(wall,-50));
+  for(let i=0;i<3;i++)poly(b,[P(X+.9,hgt+.2+i*.12,z1-.5),P(X+.9,hgt+.2+i*.12,z2+.3),P(X+.9,hgt+.65+i*.15,z2+.3),P(X+.9,hgt+.65+i*.15,z1-.5)],i?'#ffffff':'#cadcee');
+  // chimney
+  const cz=(z1+z2)/2;poly(b,[P(X-.8,hgt+1.9,cz),P(X-.8,hgt+1.9,cz+.6),P(X-.8,hgt+.5,cz+.6),P(X-.8,hgt+.5,cz)],'#7d6b62');
+  poly(b,[P(X-.85,hgt+2.1,cz-.05),P(X-.85,hgt+2.1,cz+.65),P(X-.85,hgt+1.9,cz+.65),P(X-.85,hgt+1.9,cz-.05)],'#ffffff');
+  return P(X-.8,hgt+2.1,cz+.3)}
+leftHouse(26,34,5,'#a6bcd2',false);
+leftHouse(14,22,5.5,'#e2cfae',true);
+const chimney=leftHouse(5,12,5.4,'#b07862',true);
+
+function pine(X,z,hgt){const[bx,by]=P(X,0,z),s=F/z;
+  rect(b,bx-.15*s,by-1.4*s,.3*s,1.4*s,'#5b4032');
+  const tiers=5;for(let i=0;i<tiers;i++){const y0=by-(hgt*(i+1)/tiers+.8)*s+ .2*s,y1=by-(hgt*i/tiers+.6)*s,w=(1.5-i*.25)*s;
+    poly(b,[[bx,y0],[bx+w,y1],[bx-w,y1]],'#2e6a58');poly(b,[[bx,y0],[bx+w,y1],[bx+w*.35,y1]],'#22503f');
+    poly(b,[[bx,y0],[bx+w*.75,y0+(y1-y0)*.55],[bx,y0+(y1-y0)*.35],[bx-w*.8,y0+(y1-y0)*.6]],'#f5faff');
+    for(let k=-2;k<=2;k++)rect(b,bx+k*w*.4,y1-1,Math.max(1,w*.3),Math.max(1,s*.12),'#ffffff')}}
+pine(-4.1,30,4);pine(-4.0,18.5,5);pine(-3.9,10,6);
+
+// ---------- stone wall on left ----------
+{const X=-3,top=1.45;
+  poly(b,[P(X,top,1),P(X,top,60),P(X,0,60),P(X,0,1)],'#b8bfcc');
+  seed=21;for(let row=0;row<5;row++){const y0=row*.29,y1=y0+.27,off=row%2?.3:0;
+    for(let z=1+off;z<40;z+=.62){const z2=z+.58,c=['#c6ccd8','#bcc3d0','#ced4df','#b3bac8'][(row*3+Math.floor(z*1.7))%4];
+      poly(b,[P(X,y1,z),P(X,y1,z2),P(X,y0,z2),P(X,y0,z)],c);
+      const p=P(X,y1,z),q=P(X,y1,z2);line(b,p[0],p[1],q[0],q[1],'#e4e8ef');
+      const r=P(X,y0,z2),s2=P(X,y1,z2);if(F/z>6)line(b,r[0],r[1],s2[0],s2[1],'#8d95a6')}}
+  // snow cap
+  poly(b,[P(X+.08,top+.32,1),P(X+.08,top+.32,60),P(X+.08,top-.04,60),P(X+.08,top-.04,1)],'#ffffff');
+  poly(b,[P(X+.08,top+.02,1),P(X+.08,top+.02,60),P(X+.08,top-.06,60),P(X+.08,top-.06,1)],'#cfe0f2');
+  for(let z=1.1;z<30;z*=1.07){const p=P(X+.08,top-.04,z),s=F/z;ell(b,p[0],p[1],s*.06,s*.08*((z*13)%2+.5),'#ffffff','bot')}
+  // snowbank at wall base
+  for(let z=1;z<50;z*=1.03){const p=P(X+.25,0,z),s=F/z;ell(b,p[0],p[1],s*.35,s*.18,'#f6faff','top');ell(b,p[0]+s*.1,p[1],s*.22,s*.08,'#dde9f6','top')}
+}
+// snowbank along right houses
+for(let z=2.2;z<50;z*=1.03){const p=P(3.3,0,z),s=F/z;ell(b,p[0],p[1],s*.4,s*.2,'#f6faff','top');ell(b,p[0]-s*.1,p[1],s*.25,s*.07,'#dde9f6','top')}
+
+// ---------- utility poles & wires ----------
+const poles=[2.6,9,17,27,40];const PX=3.1,PT=8.2;
+for(let i=poles.length-1;i>=0;i--){const z=poles[i],s=F/z,[x,yb]=P(PX,0,z),[,yt]=P(PX,PT,z);
+  rect(b,x-.13*s,yt,.26*s,yb-yt,'#767b86');rect(b,x+.04*s,yt,.09*s,yb-yt,'#585c66');rect(b,x-.13*s,yt,.05*s+1,yb-yt,'#9097a3');
+  rect(b,x-.15*s,yt-.12*s,.3*s,.14*s,'#ffffff');
+  for(const[yy,w]of[[7.6,1.3],[6.9,1]]){const[,ya]=P(PX,yy,z);rect(b,x-w*s,ya,2*w*s,.1*s,'#555a64');rect(b,x-w*s,ya-.05*s,2*w*s,.05*s+1,'#ffffff')}
+  const[,yx]=P(PX,5.6,z);rect(b,x-.38*s,yx,.3*s,.5*s,'#8e949f');rect(b,x-.38*s,yx-.05*s,.3*s,.07*s+1,'#ffffff');
+  // pole plate
+  const[,yp]=P(PX,2.2,z);rect(b,x-.1*s,yp,.2*s,.35*s,'#e9e3c8')}
+function wire3(a,c,sag,col){let prev=null;for(let t=0;t<=1;t+=.002){const X=a[0]+(c[0]-a[0])*t,Y=a[1]+(c[1]-a[1])*t-Math.sin(t*Math.PI)*sag,z=a[2]+(c[2]-a[2])*t;
+  const p=P(X,Y,z);if(prev)line(b,prev[0],prev[1],p[0],p[1],col);prev=p}}
+for(let i=0;i<poles.length-1;i++)for(const[dx,yy]of[[-1.1,7.65],[1.1,7.65],[-.7,6.95],[.7,6.95]])wire3([PX+dx,yy,poles[i]],[PX+dx,yy,poles[i+1]],.35,'#2b3142');
+for(const[dx,yy]of[[-1.1,7.65],[1.1,7.65],[-.7,6.95]])wire3([PX+dx,yy,poles[0]],[PX+dx*2,yy+.5,.6],.2,'#2b3142');
+wire3([PX-1.1,7.65,poles[1]],[-4.6,6,8],.5,'#2b3142');wire3([PX-.7,6.95,poles[2]],[-4.6,6,18],.4,'#2b3142');
+wire3([PX-1.1,7.65,poles[0]],[-4.6,6.5,3],.4,'#2b3142');
+
+// left pole near the wall (the guy leans on it)
+{const z=6,X=-2.6,sc=F/z,[x,yb]=P(X,0,z),[,yt]=P(X,8.2,z);
+  rect(b,x-.13*sc,yt,.26*sc,yb-yt,'#767b86');rect(b,x+.04*sc,yt,.09*sc,yb-yt,'#585c66');rect(b,x-.13*sc,yt,.05*sc+1,yb-yt,'#9097a3');
+  const[,ya]=P(X,6.9,z);rect(b,x-.9*sc,ya,1.8*sc,.1*sc,'#555a64');rect(b,x-.9*sc,ya-.05*sc,1.8*sc,.05*sc+1,'#ffffff');
+  const[,yp]=P(X,2.2,z);rect(b,x-.1*sc,yp,.2*sc,.35*sc,'#e9e3c8');rect(b,x-.08*sc,yp+.08*sc,.16*sc,1,'#6b6f7a');
+  // snow piled at its base
+  ell(b,x,yb,.45*sc,.12*sc,'#ffffff','top');ell(b,x+.1*sc,yb,.3*sc,.05*sc,'#dde9f6','top');
+  wire3([X+.7,6.95,z],[PX-.7,6.95,poles[1]],.6,'#2b3142');wire3([X-.7,6.95,z],[X-.7,6.95,16],.3,'#2b3142');
+  wire3([X+.7,6.95,z],[X+.7,7.5,1.2],.2,'#2b3142');}
+
+
+// ================= CHARACTER =================
+const CW=90,CH=190,chr=mk(CW,CH),g=chr.getContext('2d');
+const C={out:'#231f36',skin:'#f8dfcf',skinS:'#ecbfac',blush:'#f39ea2',hair:'#302b42',hairH:'#4d4666',hairS:'#201c2e',
+  bean:'#f1e9dc',beanS:'#d2c4b0',coat:'#3e4f7e',coatS:'#2c3962',coatH:'#5870a6',sc:'#d6464f',scS:'#a5303b',scL:'#f4e2c8',
+  sk:'#707792',skS:'#565c76',tight:'#2d2a3a',tightH:'#454158',sock:'#f3f0ea',sockS:'#cfcad8',shoe:'#4c3631',shoeH:'#74544a',mit:'#e7c48e',mitS:'#c79f69',eye:'#3f2f58',eyeL:'#7a5fa8'};
+function legQuad(hx,hy,ax,ay,w0,w1,col){poly(g,[[hx-w0/2,hy],[hx+w0/2,hy],[ax+w1/2,ay],[ax-w1/2,ay]],col)}
+function outline(gc,w,h,col){const id=gc.getImageData(0,0,w,h),d=id.data,o=new Uint8ClampedArray(d),[r,gg,bb]=hex(col);
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=(y*w+x)*4;if(d[i+3])continue;
+    if(d[i+7]||d[i-1]||d[i+3+w*4]||d[i+3-w*4]){o[i]=r;o[i+1]=gg;o[i+2]=bb;o[i+3]=255}}
+  id.data.set(o);gc.putImageData(id,0,0)}
+const WALK_HZ=.85,STRIDE=9;
+function girlPose(t){const ph=t*Math.PI*2*WALK_HZ,s=Math.sin(ph),c=Math.cos(ph);
+  return{ph,s,c,feet:[{dx:STRIDE*s,lift:Math.max(0,c)*4.5},{dx:-STRIDE*s,lift:Math.max(0,-c)*4.5}]}}
+function drawGirl(t){
+  g.clearRect(0,0,CW,CH);
+  const X=45,B=184,{s,c,feet}=girlPose(t),bob=Math.round(Math.abs(s)*-1.5+1.5);
+  const wind=Math.sin(t*2.3)+Math.sin(t*3.7)*.5,trail=3+wind;
+  const Y=B-bob;
+  // back hair, streaming slightly behind (left)
+  poly(g,[[X-12,Y-143],[X+14,Y-143],[X+12,Y-104],[X+4,Y-96],[X-6-trail*.5,Y-93],[X-10-trail,Y-97],[X-17-trail,Y-99],[X-16,Y-120]],C.hair);
+  poly(g,[[X-14,Y-128],[X-8,Y-128],[X-6-trail*.5,Y-93],[X-17-trail,Y-99]],C.hairS);
+  // far arm (behind body)
+  {const a=-s*7;poly(g,[[X+1,Y-111],[X+8,Y-110],[X+6+a*.6,Y-92],[X+5+a,Y-78],[X-1+a,Y-79],[X+a*.5-1,Y-94]],C.coatS);
+   ell(g,X+2+a,Y-75,4,4.2,C.mitS)}
+  // legs: far leg first (darker), then near
+  for(const[i,dark]of[[1,true],[0,false]]){const f=feet[i],hx=X+(i?3:-2),hy=Y-60,ax=X+f.dx+(i?2:-1),ay=B-6-f.lift-(i?2:0);
+    const kx=(hx+ax)/2+(f.lift>0?3:0),ky=(hy+ay)/2;
+    legQuad(hx,hy,kx,ky,8,7,dark?'#211f2b':C.tight);legQuad(kx,ky,ax,ay,7,6,dark?'#211f2b':C.tight);
+    if(!dark)legQuad(hx-2,hy,kx-2,ky,2,2,C.tightH);
+    // slouch sock
+    const sx0=kx+(ax-kx)*.15,sy0=ky+(ay-ky)*.15;
+    poly(g,[[sx0-5,sy0],[sx0+5,sy0],[ax+6,ay],[ax-6,ay]],dark?C.sockS:C.sock);
+    for(let k=1;k<4;k++){const tt=k/4;line(g,sx0-5+(ax-sx0)*tt,sy0+(ay-sy0)*tt,sx0+5+(ax-sx0)*tt,sy0+(ay-sy0)*tt+1,dark?'#b4afc0':C.sockS)}
+    // loafer pointing right
+    const sy=ay+3;ell(g,ax+3,sy,7,3.4,dark?'#3a2925':C.shoe);rect(g,ax-1,sy-3,8,2,dark?'#553c35':C.shoeH);rect(g,ax+3,sy-2,3,1,'#2e201d')}
+  // skirt (sways back while walking)
+  poly(g,[[X-15,Y-73],[X+17,Y-73],[X+21-1,Y-57+(s>0?0:1)],[X-21-2,Y-57]],C.sk);
+  for(let k=-4;k<=4;k++){const x0=X+1+k*4;line(g,x0,Y-71,x0+k*.6-1,Y-58,C.skS)}
+  poly(g,[[X-15,Y-73],[X-10,Y-73],[X-16,Y-57],[X-23,Y-57]],C.skS);rect(g,X-22,Y-58,42,1,'#8a90aa');
+  // coat body
+  poly(g,[[X-14,Y-112],[X+15,Y-112],[X+19,Y-71],[X-19,Y-71]],C.coat);
+  poly(g,[[X-14,Y-112],[X-7,Y-112],[X-12,Y-71],[X-19,Y-71]],C.coatS);
+  poly(g,[[X+11,Y-112],[X+15,Y-112],[X+19,Y-71],[X+15,Y-71]],C.coatH);
+  line(g,X+7,Y-106,X+9,Y-72,C.coatS);
+  for(const yy of[-102,-93,-84]){rect(g,X+8,Y+yy,4,2,C.mit);rect(g,X+5,Y+yy+.5,3,1,'#2a2a44')}
+  rect(g,X-19,Y-72,38,2,C.coatS);
+  // near arm (swings opposite to near leg)
+  {const a=-s*7*-1;poly(g,[[X-6,Y-112],[X+2,Y-111],[X+1+a*.5,Y-94],[X+a,Y-78],[X-7+a,Y-79],[X-8+a*.5,Y-96]],C.coat);
+   line(g,X-5,Y-108,X-6+a,Y-80,C.coatH);rect(g,X-7+a,Y-80,8,3,C.coatH);
+   ell(g,X-3+a,Y-74,4.6,4.6,C.mit);ell(g,X-1+a,Y-73,2.4,3,C.mitS);rect(g,X-6+a,Y-77,3,1,'#f6e3c0')}
+  // neck + face (3/4 right)
+  rect(g,X-2,Y-118,8,6,C.skinS);
+  ell(g,X+2,Y-129,11.5,12.5,C.skin);
+  poly(g,[[X-6,Y-124],[X+12,Y-124],[X+8,Y-116],[X+1,Y-116]],C.skin);
+  rect(g,X+13,Y-124,1,2,C.skin); // nose tip
+  poly(g,[[X-9,Y-134],[X-4,Y-134],[X-5,Y-121],[X-9,Y-124]],C.skinS); // ear side shade
+  ell(g,X-6,Y-125,2,3,C.skinS);
+  const blink=(t%4.3)<.13;
+  for(const[ex,w]of[[X-1,4],[X+8,3]]){if(blink)rect(g,ex-1,Y-125,w+2,1,C.out);else{
+    rect(g,ex-1,Y-129,w+2,1,C.out);rect(g,ex,Y-128,w,5,C.eye);rect(g,ex,Y-125,w,2,C.eyeL);rect(g,ex+w-2,Y-128,2,2,'#ffffff');rect(g,ex,Y-124,1,1,'#ffffff');rect(g,ex+w,Y-129,1,1,C.out)}}
+  rect(g,X-3,Y-121,4,1,C.blush);rect(g,X+8,Y-121,4,1,C.blush);rect(g,X-2,Y-120,2,1,C.blush);rect(g,X+9,Y-120,2,1,C.blush);
+  rect(g,X+11,Y-122,1,1,C.skinS);rect(g,X+6,Y-118,3,1,'#b5616d');
+  rect(g,X-2,Y-131,4,1,C.hairS);rect(g,X+8,Y-131,4,1,C.hairS);
+  // bangs + locks
+  ell(g,X+1,Y-135,13.5,9,C.hair,'top');rect(g,X-12,Y-135,27,3,C.hair);
+  for(const[bx,w,d]of[[-8,5,5],[-3,6,3],[3,5,4],[8,6,3],[12,3,5]])poly(g,[[X+bx,Y-133],[X+bx+w,Y-133],[X+bx+w*.5+1,Y-133+d]],C.hair);
+  poly(g,[[X-12,Y-136],[X-6,Y-136],[X-7-trail*.4,Y-110],[X-10-trail*.6,Y-108],[X-13,Y-118]],C.hair);
+  line(g,X-9,Y-133,X-9-trail*.5,Y-112,C.hairH);
+  line(g,X-3,Y-140,X,Y-132,C.hairH);line(g,X+5,Y-141,X+8,Y-133,C.hairH);
+  // beanie
+  ell(g,X+1,Y-141,13.5,10.5,C.bean,'top');
+  for(let k=-12;k<=12;k+=3)line(g,X+1+k*.6,Y-150+Math.abs(k)*.3,X+1+k,Y-141,C.beanS);
+  rect(g,X-13,Y-142,28,6,C.beanS);for(let k=-12;k<15;k+=2)rect(g,X+k,Y-142,1,6,'#bfb09a');rect(g,X-13,Y-142,28,1,'#e3d8c7');
+  const pp=-2-trail*.4;ell(g,X+pp,Y-153,4.5,4,C.bean);ell(g,X+1+pp,Y-152,2.5,2.5,C.beanS);rect(g,X-2+pp,Y-155,2,1,'#ffffff');
+  // scarf wrap
+  poly(g,[[X-13,Y-119],[X+16,Y-119],[X+17,Y-108],[X-14,Y-108]],C.sc);
+  for(let k=-12;k<16;k+=6)rect(g,X+k,Y-119,1,11,C.scL);
+  rect(g,X-13,Y-115,30,1,C.scL);rect(g,X-14,Y-110,31,2,C.scS);
+  // scarf tail streaming back (left) in the wind
+  const w2=trail*2.2,fl=Math.sin(t*9)*1.5;
+  poly(g,[[X-12,Y-117],[X-6,Y-112],[X-14-w2,Y-100+fl],[X-24-w2,Y-98+fl*1.5],[X-27-w2,Y-104+fl*1.5],[X-16-w2*.5,Y-112+fl*.5]],C.sc);
+  line(g,X-11,Y-115,X-25-w2,Y-101+fl*1.5,C.scL);line(g,X-9,Y-112,X-20-w2,Y-99+fl*1.2,C.scS);
+  for(let k=0;k<4;k++)rect(g,X-29-w2+k*1.2,Y-104+fl*1.5+k*1.6,2,1,k%2?C.scS:C.sc);
+  outline(g,CW,CH,C.out);
+  return Y}
+
+const GHZ=1.0;
+function gait(t){const pn=(t*GHZ)%1,legs=[];
+  for(let i=0;i<2;i++){const p=(pn+i*.5)%1;let d,lift=0,heel=0;
+    if(p<.6){d=.3-p;heel=p>.4?(p-.4)/.2:0}else{const u=(p-.6)/.4;d=-.3+.6*(u*u*(3-2*u));lift=Math.sin(u*Math.PI)*9}
+    legs.push({p,d,lift,heel})}
+  return{legs,pn,up:Math.round(1+Math.cos(Math.PI*4*(pn-.3))),swayX:-Math.round(1.3*Math.cos(Math.PI*2*(pn-.3)))}}
+function drawGirlFront(t,gz=3){
+  g.clearRect(0,0,CW,CH);
+  const G=gait(t),X0=45,X=X0+G.swayX,B=184,bob=G.up,DPX=Math.min(26,170/gz);
+  const sway=Math.sin(t*1.7)*1.2,wind=Math.sin(t*2.3)+Math.sin(t*3.7)*.5;
+  const Y=B-bob,U0=Y-12; // upper body raised -> longer legs
+  // back hair
+  poly(g,[[X-15,U0-142],[X+15,U0-142],[X+18+sway*.5,U0-96],[X+14+sway,U0-91],[X+9,U0-95],[X+4+sway,U0-90],[X-3,U0-94],[X-8+sway,U0-90],[X-13,U0-95],[X-18+sway*.5,U0-97]],C.hair);
+  poly(g,[[X+10,U0-130],[X+15,U0-130],[X+18+sway*.5,U0-96],[X+14+sway,U0-91]],C.hairS);
+  // legs: stance foot stays planted (slides back as the body passes over it), swing foot lifts with a bent knee
+  const order=[0,1].sort((i,j)=>G.legs[j].d-G.legs[i].d).reverse(); // draw the farther foot first
+  for(const i of order){const L=G.legs[i],side=i?1:-1,inward=L.lift*.18;
+    const lx=X0+(i?5:-7)+G.swayX*.5-side*inward,heel=L.heel*2.5,fy=Math.round(B-L.lift-heel+L.d*DPX);
+    const hipY=U0-62,knee=L.lift>0?L.lift*.35:0;
+    // thigh + shin (knee nudges forward/inward while swinging)
+    rect(g,lx-4,hipY,8,fy-hipY-6,C.tight);rect(g,lx-4,hipY,2,Math.max(1,fy-hipY-26),C.tightH);
+    if(knee>1){rect(g,lx-4,hipY+26,8,2,'#3a3648');}
+    // slouch sock
+    poly(g,[[lx-5,fy-28+knee],[lx+5,fy-28+knee],[lx+6,fy-6],[lx-6,fy-6]],C.sock);
+    for(let k=0;k<4;k++){const yy=fy-25+knee*.7+k*5;line(g,lx-5,yy,lx+5,yy+1+(k%2),C.sockS)}
+    rect(g,lx+3,fy-27+knee,2,21-knee,C.sockS);rect(g,lx-5,fy-29+knee,10,2,C.sock);
+    // loafer: bigger when forward, shows the sole when the heel peels up or the foot swings
+    const fw=6+L.d*4,fh=L.lift>0||L.heel>0?2.8:3.6;
+    if(L.heel>0||L.lift>2){ell(g,lx,fy-2,fw,fh,'#2a1d1a');ell(g,lx,fy-3,fw-.5,fh-.6,C.shoe)}else ell(g,lx,fy-3,fw,fh,C.shoe);
+    rect(g,lx-4,fy-6,7,2,C.shoeH);rect(g,lx-2,fy-5,4,1,'#2e201d')}
+  // skirt
+  poly(g,[[X-15,U0-73],[X+15,U0-73],[X+19,U0-57],[X-19,U0-57]],C.sk);
+  for(let k=-4;k<=4;k++){const x0=X+k*4;line(g,x0,U0-71,x0+k*.6,U0-58,C.skS)}
+  poly(g,[[X+11,U0-73],[X+17,U0-73],[X+21,U0-57],[X+14,U0-57]],C.skS);
+  rect(g,X-21,U0-58,42,1,'#8a90aa');
+  // coat body
+  poly(g,[[X-13,U0-112],[X+13,U0-112],[X+16,U0-71],[X-16,U0-71]],C.coat);
+  poly(g,[[X+7,U0-112],[X+13,U0-112],[X+16,U0-71],[X+10,U0-71]],C.coatS);
+  poly(g,[[X-13,U0-112],[X-9,U0-112],[X-12,U0-72],[X-16,U0-71]],C.coatH);
+  line(g,X+1,U0-106,X+1,U0-72,C.coatS);
+  for(const yy of[-102,-93,-84]){rect(g,X+2,Y+yy,4,2,C.mit);rect(g,X-2,Y+yy+.5,4,1,'#2a2a44')}
+  rect(g,X-15,U0-86,7,1,C.coatS);rect(g,X+9,U0-86,7,1,'#24305a');
+  rect(g,X-16,U0-72,32,2,C.coatS);
+  // arms + mittens (swing opposite to legs)
+  for(const side of[-1,1]){const af=(side<0?G.legs[1].d:G.legs[0].d)/.3,a=-side*af*2.2,my=af*2.5,sx=X+side*15;
+    poly(g,[[sx,U0-111],[sx+side*1,U0-112],[sx+side*7+a*.4,U0-96],[sx+side*9+a,U0-77+my],[sx+side*2+a,U0-76+my],[sx-side*1,U0-100]],side>0?C.coatS:C.coat);
+    if(side<0)line(g,sx-1,U0-108,sx-8+a,U0-79,C.coatH);
+    rect(g,sx+side*1+a-(side<0?7:0),U0-79+my,8,3,C.coatH);
+    ell(g,sx+side*5.5+a,U0-72+my,4.5+af*.4,4.6+af*.4,C.mit);ell(g,sx+side*7+a,U0-71+my,2.2,3,C.mitS);rect(g,sx+side*1.5+a-(side>0?0:2),U0-75,3,1,'#f6e3c0')}
+  // neck
+  rect(g,X-4,U0-118,8,6,C.skinS);
+  // face
+  ell(g,X,U0-129,11.5,12.5,C.skin);
+  poly(g,[[X-9,U0-124],[X+9,U0-124],[X+3,U0-116],[X-3,U0-116]],C.skin);
+  poly(g,[[X+6,U0-136],[X+11.5,U0-130],[X+8,U0-121],[X+3,U0-117],[X+5,U0-124]],C.skinS);
+  // eyes (blink every ~4s)
+  const blink=(t%4.3)<.13;
+  for(const ex of[X-7,X+3]){if(blink){rect(g,ex-1,U0-125,6,1,C.out)}else{
+    rect(g,ex-1,U0-129,6,1,C.out);rect(g,ex,U0-128,4,5,C.eye);rect(g,ex,U0-125,4,2,C.eyeL);rect(g,ex,U0-128,2,2,'#ffffff');rect(g,ex+2,U0-124,1,1,'#ffffff');rect(g,ex-1,U0-128,1,1,C.out);rect(g,ex+4,U0-129,1,1,C.out)}}
+  rect(g,X-9,U0-121,4,1,C.blush);rect(g,X+5,U0-121,4,1,C.blush);rect(g,X-8,U0-120,2,1,C.blush);rect(g,X+6,U0-120,2,1,C.blush);
+  rect(g,X,U0-121,1,1,C.skinS);rect(g,X-1,U0-118,3,1,'#b5616d');
+  rect(g,X-8,U0-131,4,1,C.hairS);rect(g,X+3,U0-131,4,1,C.hairS);
+  // bangs + side locks
+  ell(g,X,U0-135,13.5,9,C.hair,'top');rect(g,X-13,U0-135,27,3,C.hair);
+  for(const[bx,w,d]of[[-12,5,6],[-7,6,3],[-1,5,4],[4,6,3],[9,5,5]])poly(g,[[X+bx,U0-133],[X+bx+w,U0-133],[X+bx+w*.5+(bx>0?-1:1),U0-133+d]],C.hair);
+  line(g,X-6,U0-140,X-3,U0-132,C.hairH);line(g,X+3,U0-141,X+6,U0-133,C.hairH);
+  for(const side of[-1,1]){const lx=X+side*12.5,sw=sway*.8+wind*.4;
+    poly(g,[[lx-2.5,U0-136],[lx+2.5,U0-136],[lx+side*1+2+sw,U0-110],[lx+side*1+sw,U0-106],[lx-2+sw,U0-112]],C.hair);
+    line(g,lx-side*1,U0-133,lx+sw,U0-112,side<0?C.hairH:C.hairS)}
+  // beanie
+  ell(g,X,U0-141,13.5,10.5,C.bean,'top');
+  for(let k=-12;k<=12;k+=3)line(g,X+k*.6,U0-150+Math.abs(k)*.3,X+k,U0-141,C.beanS);
+  rect(g,X-14,U0-142,28,6,C.beanS);for(let k=-13;k<14;k+=2)rect(g,X+k,U0-142,1,6,'#bfb09a');rect(g,X-14,U0-142,28,1,'#e3d8c7');
+  ell(g,X+wind*.3,U0-153,4.5,4,C.bean);ell(g,X+1+wind*.3,U0-152,2.5,2.5,C.beanS);rect(g,X-2+wind*.3,U0-155,2,1,'#ffffff');
+  // scarf wrap
+  poly(g,[[X-15,U0-119],[X+15,U0-119],[X+16,U0-108],[X-16,U0-108]],C.sc);
+  for(let k=-14;k<15;k+=6)rect(g,X+k,U0-119,1,11,C.scL);
+  rect(g,X-15,U0-115,31,1,C.scL);rect(g,X-16,U0-110,32,2,C.scS);poly(g,[[X+9,U0-119],[X+15,U0-119],[X+16,U0-108],[X+10,U0-108]],C.scS);
+  // scarf tail, flutters in wind
+  const w2=wind*1.6;
+  poly(g,[[X+3,U0-111],[X+11,U0-111],[X+12+w2*.5,U0-95],[X+13+w2,U0-86],[X+5+w2,U0-86],[X+4+w2*.5,U0-95]],C.sc);
+  for(let k=0;k<3;k++)line(g,X+5+k*3,U0-110,X+6+k*3+w2,U0-87,C.scL);
+  line(g,X+3,U0-98,X+12+w2*.6,U0-98,C.scL);
+  rect(g,X+10,U0-111,2,10,C.scS);
+  for(let k=0;k<8;k++)rect(g,X+5+k+w2,U0-86,1,2+((k+Math.floor(t*6))%2),k%2?C.scS:C.sc);
+  // auto outline
+  const id=g.getImageData(0,0,CW,CH),d=id.data,o=new Uint8ClampedArray(d);
+  const[or,og,ob]=hex(C.out);
+  for(let y=1;y<CH-1;y++)for(let x=1;x<CW-1;x++){const i=(y*CW+x)*4;if(d[i+3])continue;
+    if(d[i+3+4]||d[i+3-4]||d[i+3+CW*4]||d[i+3-CW*4]){o[i]=or;o[i+1]=og;o[i+2]=ob;o[i+3]=255}}
+  id.data.set(o);g.putImageData(id,0,0);
+  return U0}
+
+
+// ================= LEANING GUY (on the left pole) =================
+const LW=60,LH=96,guy=mk(LW,LH),q=guy.getContext('2d');
+const L={out:'#1d1b28',jk:'#2c3140',jkS:'#1f2330',jkH:'#434a5e',fur:'#cbb79a',furS:'#a8936f',hair:'#4a3529',hairH:'#6b4c3a',skin:'#f1cdb7',skinS:'#dba98f',
+  jean:'#4b5d82',jeanS:'#3a4867',shoe:'#f2f2f2',shoeS:'#c4c8d2',hp:'#d84a4a',phone:'#1b1d24',scr:'#bfe8ff'};
+let girlZ=99;
+function drawGuy(t){q.clearRect(0,0,LW,LH);const X=30,B=92,U=B+5;
+  const look=(t%9)>7.4||(girlZ<8.5&&girlZ>3.5),nod=Math.round((Math.sin(t*Math.PI*2*1.4)+1)*.5)*(look?0:1);
+  const r=(x,y,w,h,col)=>rect(q,x,y,w,h,col),P2=(pts,col)=>poly(q,pts,col),E=(cx,cy,rx,ry,col,hf)=>ell(q,cx,cy,rx,ry,col,hf);
+  // bent leg (foot planted against the pole behind him)
+  P2([[X-4,B-31],[X+2,B-31],[X+6,B-17],[X+1,B-16]],L.jeanS);P2([[X+1,B-17],[X+6,B-17],[X-3,B-9],[X-7,B-11]],L.jeanS);
+  E(X-8,B-10,4,2.5,L.shoeS);
+  // standing leg
+  P2([[X-2,B-31],[X+5,B-31],[X+7,B-6],[X+1,B-6]],L.jean);r(X+5,B-29,2,22,L.jeanS);r(X+1,B-14,6,1,L.jeanS);
+  E(X+6,B-3,5.5,3,L.shoe);r(X+2,B-3,10,1,L.shoeS);r(X+3,B-6,6,2,L.shoe);
+  // puffer jacket, leaning back toward the pole (left)
+  P2([[X-10,U-66],[X+6,U-66],[X+10,U-34],[X-6,U-33]],L.jk);
+  P2([[X-10,U-66],[X-5,U-66],[X-1,U-33],[X-6,U-33]],L.jkS);
+  for(let k=0;k<5;k++){const yy=U-61+k*6;line(q,X-9+k*.8,yy,X+7+k*.6,yy+1,L.jkS);line(q,X-8+k*.8,yy+1,X+5+k*.6,yy+2,L.jkH)}
+  line(q,X+2,U-64,X+5,U-34,L.jkS);
+  // fur hood collar
+  E(X-1,U-66,9,4,L.fur);for(let k=-8;k<9;k+=2)r(X-1+k,U-64,1,2,L.furS);
+  // arms holding phone at chest
+  P2([[X-9,U-63],[X-3,U-63],[X+2,U-50],[X-2,U-47]],L.jkH);P2([[X-2,U-50],[X+6,U-52],[X+7,U-47],[X-1,U-46]],L.jkH);
+  P2([[X+4,U-64],[X+9,U-62],[X+10,U-50],[X+6,U-49]],L.jk);
+  r(X+4,U-55,5,8,L.phone);const flick=(Math.floor(t*1.3)%3===0);r(X+5,U-54,3,6,flick?'#e2f5ff':L.scr);
+  E(X+5,U-48,2.5,2,L.skin);E(X+9,U-50,2,2,L.skin);
+  // head (tilted down to the phone, nodding to music)
+  const hy=U-75+(look?-1:nod),hx=X+(look?0:2);
+  r(hx-2,U-70,5,4,L.skinS);
+  E(hx,hy,7,7.5,L.skin);r(hx-7,hy,4,6,L.skinS);
+  if(look){r(hx+1,hy,2,2,L.out);r(hx+5,hy,1,2,L.out);r(hx+3,hy+4,2,1,'#a86060')}else{r(hx+1,hy+2,3,1,L.out);r(hx+5,hy+2,2,1,L.out);r(hx+4,hy+5,2,1,'#c08080')}
+  // messy hair
+  E(hx-1,hy-4,8,5,L.hair,'top');r(hx-8,hy-4,15,3,L.hair);r(hx-8,hy-2,3,5,L.hair);
+  for(const[dx,dd]of[[-5,3],[-1,4],[3,3],[6,2]])P2([[hx+dx,hy-2],[hx+dx+4,hy-2],[hx+dx+2,hy-2+dd]],L.hair);
+  line(q,hx-4,hy-8,hx+1,hy-6,L.hairH);
+  // headphones
+  r(hx-8,hy-10,2,7,'#2a2a33');P2([[hx-7,hy-10],[hx+5,hy-12],[hx+6,hy-10],[hx-6,hy-8]],'#2a2a33');
+  E(hx-6,hy+1,2.6,3.6,L.hp);r(hx-6,hy-1,1,3,'#f07a7a');
+  // phone glow on face
+  q.globalAlpha=.18;E(hx+3,hy+3,5,4,'#bfe8ff');q.globalAlpha=1;
+  outline(q,LW,LH,L.out);
+  return{hx,hy}}
+const GS=.79;function drawGuyImg(){ctx.imageSmoothingEnabled=false;ctx.drawImage(guy,0,0,LW,LH,Math.round(GUY.x-30*GS),Math.round(GUY.y-92*GS),Math.round(LW*GS),Math.round(LH*GS))}
+const GUY=(()=>{const z=6,[x,y]=P(-2.6,0,z);return{x:Math.round(x+13),y:Math.round(y)}})();
+
+// ================= CAT ON WALL =================
+function drawCat(t){const[x,y]=P(-3,1.77,8),s=F/4.2*.012; // ~ pixel scale
+  const cx=Math.round(x+2),cy=Math.round(y);
+  rect(ctx,cx-6,cy-6,11,6,'#3a3346');rect(ctx,cx-5,cy-7,9,2,'#3a3346');
+  rect(ctx,cx+2,cy-11,7,6,'#3a3346');rect(ctx,cx+2,cy-13,2,2,'#3a3346');rect(ctx,cx+7,cy-13,2,2,'#3a3346');
+  const bl=(t%5)<.15;if(!bl){rect(ctx,cx+4,cy-9,1,1,'#e8d35a');rect(ctx,cx+7,cy-9,1,1,'#e8d35a')}
+  const tw=Math.round(Math.sin(t*2)*2);rect(ctx,cx-8,cy-3,3,2,'#3a3346');rect(ctx,cx-9,cy-2+tw*.5,2,4,'#3a3346');rect(ctx,cx-9,cy+1+tw,2,2,'#3a3346');
+  rect(ctx,cx-5,cy-7,8,1,'#ffffff')}
+
+// ================= FX =================
+const flakes=[];for(let i=0;i<260;i++)flakes.push({x:Math.random()*W,y:Math.random()*H,z:Math.random(),ph:Math.random()*6});
+let puffs=[],smoke=[];
+const GB=392,SPEED=2*STRIDE*2*WALK_HZ,LOOP=(W+120)/SPEED;let prints=[],lastLift=[0,0],lastLoop=-1;
+let t0=performance.now(),last=t0;
+function frame(now){
+  const t=(now-t0)/1000+3+(+new URLSearchParams(location.search).get("t")||0),dt=Math.min(.05,(now-last)/1000);last=now;
+  ctx.drawImage(bg,0,0);
+  // chimney smoke
+  if(Math.random()<dt*6)smoke.push({x:chimney[0],y:chimney[1],a:1,r:2});
+  smoke=smoke.filter(p=>(p.a-=dt*.25)>0);for(const p of smoke){p.y-=dt*7;p.x+=dt*(4+Math.sin(t+p.y*.1)*3);p.r+=dt*1.6;
+    ctx.globalAlpha=p.a*.55;ell(ctx,p.x,p.y,p.r,p.r*.8,'#eef4fb');ctx.globalAlpha=1}
+  drawCat(t);
+  // leaning guy
+  ctx.globalAlpha=.3;ell(ctx,GUY.x,GUY.y,8,1.6,'#7f9fc7');ctx.globalAlpha=1;
+  const gh=drawGuy(t);drawGuyImg();
+  if((t%3.7)<dt*1.2)for(let k=0;k<3;k++)puffs.push({x:GUY.x+(gh.hx+7-30)*GS,y:GUY.y+(gh.hy+5-92)*GS,a:.8,r:.6,small:1});
+  // girl walks from far down the street toward the camera, looping
+  const Z0=16,Z1=1.2,VW=GHZ*1.0,DUR=(Z0-Z1)/VW,tt=t%DUR,gz=Z0-tt*VW,gX=-.15;girlZ=gz;
+  const k=2.14/gz,[gpx,gpy]=P(gX,0,gz);
+  const GG=gait(t);
+  GG.legs.forEach((L,i)=>{if(L.p<lastLift[i]&&tt>.3)prints.push({X:gX+(i?.11:-.13),z:gz-.3,a:1});lastLift[i]=L.p});
+  prints=prints.filter(p=>(p.a-=dt*.02)>0);
+  if(tt<dt*2)prints=[];
+  for(const p of prints){const[px,py]=P(p.X,0,p.z),sc=F/p.z;ctx.globalAlpha=Math.min(1,p.a*1.5);
+    ell(ctx,px,py,Math.max(1,sc*.07),Math.max(.6,sc*.025),'#b3c7e0');ctx.globalAlpha=1}
+  const drawHer=()=>{ctx.globalAlpha=.35;ell(ctx,gpx+3*k,gpy+1,22*k,3.5*k,'#7f9fc7');ctx.globalAlpha=1;
+    const Yh=drawGirlFront(t,gz);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=Math.max(0,Math.min(1,tt/1.2,(gz-1.2)/.5));
+    const dx=Math.round(gpx-45*k),dy=Math.round(gpy-184*k);ctx.drawImage(chr,0,0,CW,CH,dx,dy,Math.round(CW*k),Math.round(CH*k));ctx.globalAlpha=1;
+    if(Math.random()<dt*1.4)for(let n=0;n<3;n++)puffs.push({x:gpx+(1+Math.random()*3)*k,y:gpy+(Yh-118-184)*k,a:1,r:Math.max(.6,k)})};
+  const herFirst=gz>6;
+  if(herFirst){ /* she is behind the guy: redraw guy over her */ drawHer();drawGuyImg()}else drawHer();
+  puffs=puffs.filter(p=>(p.a-=dt*.8)>0);for(const p of puffs){p.x+=dt*(p.small?3:6);p.y-=dt*4;p.r+=dt*(p.small?1.5:3);ctx.globalAlpha=p.a*.6;ell(ctx,p.x,p.y,p.r,p.r*.7,'#ffffff');ctx.globalAlpha=1}
+  // snow
+  for(const f of flakes){f.y+=dt*(10+f.z*30);f.x+=dt*(Math.sin(t*.7+f.ph)*5+5*f.z);
+    if(f.y>H+4){f.y=-4;f.x=Math.random()*W}if(f.x>W+4)f.x=-4;
+    if(f.z>.93){ctx.globalAlpha=.85;ell(ctx,f.x,f.y,2.2,2.2,'#ffffff');ctx.globalAlpha=.4;ell(ctx,f.x,f.y,3.4,3.4,'#ffffff')}
+    else{ctx.globalAlpha=.55+f.z*.45;rect(ctx,f.x,f.y,f.z>.7?2:1,f.z>.7?2:1,'#ffffff')}}
+  ctx.globalAlpha=1;
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script></body></html>

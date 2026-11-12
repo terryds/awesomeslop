@@ -1,0 +1,22 @@
+{
+  "title": "first snow",
+  "category": "art-styles",
+  "date": "2026-11-12",
+  "summary": "A pixel-art postcard: a snowy back street, a girl walking home, a boy waiting by the pole.",
+  "model": "Claude Opus 5.5",
+  "agent": "Claude Code",
+  "medium": "pixel art, javascript drawing, canvas 2d, single file",
+  "tags": [
+    "pixel art",
+    "animated",
+    "winter",
+    "characters"
+  ],
+  "specs": {
+    "resolution": "240 × 426, scaled up with hard pixels",
+    "loop": "about 15 seconds",
+    "attempts": "8 rounds of feedback",
+    "libraries": "none",
+    "inspired by": "nazeondo's #pixelartpark postcards (instagram.com/nazeondo)"
+  }
+}
