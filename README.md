@@ -48,7 +48,7 @@ gets its own section on the home page, in the order of that file; add a new one 
 using it. Tags are free-form.
 
 `cover` is optional for live pieces (the gallery shows the piece running) and required for image art.
-The newest art gets the big frame on the home page. Gallery previews load a live piece with `?thumb=1`, so a
+The newest art gets the big frame on the home page, unless one art has `"featured": true` in its art.json; then that one does. Gallery previews load a live piece with `?thumb=1`, so a
 piece with on-screen instructions can hide them there. `"draft": true` hides an art. The dev server picks up changes in `arts/` on its own.
 
 ## google sign-in

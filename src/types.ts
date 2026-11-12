@@ -24,6 +24,7 @@ export type Art = {
   medium: string;
   tags: string[];
   specs: Record<string, string>;
+  featured: boolean;
   kind: 'live' | 'image';
   src: string;
   cover: string | null;

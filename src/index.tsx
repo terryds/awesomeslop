@@ -72,7 +72,8 @@ app.get('/', (c) => {
   const found = arts.filter(
     (a) => (!category || a.category === category.id) && (!tag || a.tags.some((t) => norm(t) === tag)) && (!q || matchesSearch(a, q)),
   );
-  const featured = filtering ? undefined : arts[0]; // newest piece gets the big frame
+  // The big frame: the art marked "featured": true in its art.json, else the newest piece.
+  const featured = filtering ? undefined : (arts.find((a) => a.featured) ?? arts[0]);
   // Home page sections: one per category that has something in it, plus a catch-all for uncategorised arts.
   const sections = [...categories, { id: '', title: 'everything else', blurb: '' }]
     .map((cat) => ({ cat, items: arts.filter((a) => (a.category ?? '') === cat.id) }))
