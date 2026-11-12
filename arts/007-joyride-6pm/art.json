@@ -1,0 +1,15 @@
+{
+  "title": "joyride, 6 p.m.",
+  "category": "game-scenes",
+  "date": "2026-11-14",
+  "summary": "An open city at golden hour. Take the orange car and drive.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "open-world driving scene, three.js, single file",
+  "tags": ["game scene", "3d", "driving", "open world", "city", "procedural"],
+  "specs": {
+    "controls": "click, WASD, space, C, T, R, M",
+    "libraries": "three.js 0.170",
+    "assets": "none, all made in code"
+  }
+}
