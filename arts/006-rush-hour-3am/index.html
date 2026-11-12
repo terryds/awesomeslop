@@ -49,15 +49,15 @@ const mix = (a, b, t) => { const x = rgb(a), y = rgb(b); return `rgb(${lerp(x[0]
 const pick = (a) => a[(rnd() * a.length) | 0];
 
 // ---------- the street in perspective ----------
-// t runs from 0 (nearest, off-screen) to 1 (the vanishing point). side is -1 left, +1 right.
-const wallX = (side, t) => lerp(side < 0 ? -W * 0.22 : W * 1.22, VP.x, t);
+// t runs from 0 (nearest, at the bottom edge) to 1 (the vanishing point). side is -1 left, +1 right.
+const wallX = (side, t) => lerp(side < 0 ? W * 0.05 : W * 0.95, VP.x, t); // a narrow street: the walls stand just inside the picture's edges
 const baseY = (t) => lerp(H, VP.y, t); // where things at depth t touch the road
 const topY = (t, h) => VP.y - (1 - t) * h * H; // roof line of a building h units tall
 const near = (t) => 1 - t; // how big things are drawn at depth t
 const across = (u, t) => [VP.x + u * (wallX(1, t) - VP.x), baseY(t)]; // a spot on the ground: u is -1 at the left wall, 0 mid-street, +1 at the right wall
 const tOf = (z) => z / (1 + z); // equal steps of real distance z bunch up toward the vanishing point
 // We look down the street from a footbridge, a little above head height, so the crowd spreads out below the horizon.
-const PERSON = 0.4, FLOOR = 0.2, KERB = 0.74; // a person and a storey as fractions of the eye height; where road meets sidewalk
+const PERSON = 0.4, FLOOR = 0.2, KERB = 0.8; // a person and a storey as fractions of the eye height; where road meets sidewalk
 const COATS = ['#c9a227', '#a8324a', '#2b7a86', '#d8d2e6'], BROLLIES = ['#d83a4a', '#e8c53a', '#3fb7d6', '#e6e2f2', '#b04ad8'];
 
 // ---------- one brush mark: a few bristle lines side by side ----------
@@ -86,7 +86,7 @@ function paintLine(x0, y0, x1, y1, wid, col, alpha = 0.9, sag = 0) {
 }
 
 // ---------- the scene ----------
-let P, ref, mask, details, strokes, cursor, startedAt, finished, signs, litWindows, crowd;
+let P, ref, mask, details, strokes, cursor, startedAt, finished, signs, litWindows, crowd, stalls, roofs;
 const ID = { ground: '#280000', wall: '#500000', sign: '#a00000', figure: '#f00000' }; // what each pixel is, for brush direction
 
 function buildScene() {
@@ -115,26 +115,66 @@ function buildScene() {
   }
   glow(VP.x, VP.y - 20, 430, P.haze, 0.42);
 
-  // the two walls of the canyon: a row of buildings on each side, drawn far to near, each with rows of windows
-  litWindows = [];
-  const cuts = [0, 0.22, 0.38, 0.52, 0.63, 0.73, 0.81, 0.87, 0.92, 0.955, 0.98];
-  const buildings = [];
-  for (const side of [-1, 1]) for (let i = cuts.length - 2; i >= 0; i--) {
-    const t0 = cuts[i], t1 = cuts[i + 1], h = lerp(2.6, 0.75, i / (cuts.length - 2)) + rnd() * 0.35;
-    const color = mix(mix(P.wallA, P.wallB, rnd()), P.haze, t0 * t0 * 0.3);
-    both(color, ID.wall, [[wallX(side, t0), topY(t0, h)], [wallX(side, t1), topY(t1, h)], [wallX(side, t1), baseY(t1)], [wallX(side, t0), baseY(t0)]]);
-    quad(g, 'rgba(0,0,0,0.28)', [[wallX(side, t1) - 2, topY(t1, h)], [wallX(side, t1) + 2, topY(t1, h)], [wallX(side, t1) + 2, baseY(t1)], [wallX(side, t1) - 2, baseY(t1)]]);
-    buildings.push({ side, t0, t1 });
-    // windows, storey by storey, starting above the shops
-    const z0 = t0 / (1 - t0), z1 = t1 / (1 - t1), dz = Math.max(0.12, (z1 - z0) / 10);
-    for (let z = z0 + dz * 0.3; z < z1 - dz * 0.5; z += dz) for (let v = (FLOOR * 1.4) / h; v < 0.98; v += FLOOR / h) {
-      if (rnd() > 0.3) continue;
-      const ta = tOf(z), tb = tOf(z + dz * 0.55), at = (t, vv) => [wallX(side, t), lerp(baseY(t), topY(t, h), vv)];
-      const pts = [at(ta, v + (FLOOR * 0.5) / h), at(tb, v + (FLOOR * 0.5) / h), at(tb, v), at(ta, v)];
-      if (pts[0][1] > H || pts[3][1] < 0 || Math.abs(pts[1][0] - pts[0][0]) < 1.5) continue;
-      const c = pick(P.windows);
-      quad(g, c + (rnd() < 0.4 ? '99' : '55'), pts);
-      litWindows.push([(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[3][1]) / 2, Math.abs(pts[1][0] - pts[0][0]), c]);
+  // the two walls of the canyon. Each side is its own row of buildings: uneven widths, uneven heights,
+  // different colours, and one of four kinds of facade.
+  litWindows = []; roofs = [];
+  const buildings = [], TINTS = ['#3a1f2e', '#16313a', '#2c2c44', '#3b2a1a'];
+  const lit = (pts, c, a) => {
+    if (pts[0][1] > H + 40 || pts[3][1] < -40 || Math.abs(pts[1][0] - pts[0][0]) < 1.5) return;
+    quad(g, c + a, pts);
+    litWindows.push([(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[3][1]) / 2, Math.abs(pts[1][0] - pts[0][0]), c]);
+  };
+  for (const side of [-1, 1]) {
+    const cuts = [0];
+    for (let z = 0; tOf(z) < 0.975; ) { z += (0.3 + rnd() * 0.7) * (1 + z * 0.35); cuts.push(Math.min(tOf(z), 0.985)); }
+    let screenUsed = false;
+    for (let i = cuts.length - 2; i >= 0; i--) { // far to near
+      const t0 = cuts[i], t1 = cuts[i + 1], h = lerp(2.8, 0.7, t0) * (0.6 + rnd() * 0.85);
+      const color = mix(mix(mix(mix(P.wallA, P.wallB, rnd()), pick(TINTS), 0.45), '#9a94c0', 0.1 + rnd() * 0.1), P.haze, t0 * t0 * 0.3);
+      const at = (t, v) => [wallX(side, t), lerp(baseY(t), topY(t, h), v)];
+      // the end wall that faces us: it shows wherever this building is taller than the nearer one beside it
+      const fx = wallX(side, t0), fw = side * 0.42 * W * near(t0), fy = topY(t0, h), floor = FLOOR * H * near(t0);
+      both(mix(color, '#000000', 0.3), ID.wall, [[fx, fy], [fx + fw, fy], [fx + fw, baseY(t0)], [fx, baseY(t0)]]);
+      if (floor > 5) for (let y = baseY(t0) - floor * 1.9; y > fy + floor * 0.3 && y > -floor; y -= floor) for (let x = floor * 0.3; x < Math.abs(fw) - floor * 0.5; x += floor * 0.75) {
+        if (rnd() < 0.3) { g.fillStyle = pick(P.windows) + 'aa'; g.fillRect(fx + side * x - (side < 0 ? floor * 0.4 : 0), y, floor * 0.4, floor * 0.45); }
+      }
+      // the long wall that runs down the street
+      both(color, ID.wall, [at(t0, 1), at(t1, 1), at(t1, 0), at(t0, 0)]);
+      quad(g, 'rgba(0,0,0,0.28)', [[wallX(side, t1) - 2, topY(t1, h)], [wallX(side, t1) + 2, topY(t1, h)], [wallX(side, t1) + 2, baseY(t1)], [wallX(side, t1) - 2, baseY(t1)]]);
+      buildings.push({ side, t0, t1 });
+      const tm = (t0 + t1) / 2;
+      if (topY(tm, h) > 30) roofs.push([wallX(side, tm), topY(tm, h), near(tm)]);
+
+      const style = !screenUsed && t0 > 0.25 && t0 < 0.75 && rnd() < 0.35 ? 3 : (rnd() * 3) | 0;
+      const z0 = t0 / (1 - t0), z1 = t1 / (1 - t1), dz = Math.max(0.12, (z1 - z0) / 10), first = (FLOOR * 1.4) / h, step = FLOOR / h;
+      if (style === 0 || style === 2) { // a grid of separate windows (sparse on the dark slab)
+        for (let z = z0 + dz * 0.3; z < z1 - dz * 0.5; z += dz) for (let v = first; v < 0.98; v += step) {
+          if (rnd() > (style ? 0.14 : 0.4)) continue;
+          const ta = tOf(z), tb = tOf(z + dz * 0.55);
+          lit([at(ta, v + step * 0.5), at(tb, v + step * 0.5), at(tb, v), at(ta, v)], pick(P.windows), rnd() < 0.5 ? 'dd' : '88');
+        }
+      }
+      if (style === 1) { // office floors: one long strip of light per storey
+        const ta = lerp(t0, t1, 0.06), tb = lerp(t0, t1, 0.94), c = pick(P.windows);
+        for (let v = first; v < 0.98; v += step) if (rnd() < 0.55) lit([at(ta, v + step * 0.32), at(tb, v + step * 0.32), at(tb, v), at(ta, v)], c, rnd() < 0.5 ? 'bb' : '66');
+      }
+      if (style === 2) { // a dark slab with a line of neon up each edge
+        const c = pick(P.signs);
+        for (const f of [0.1, 0.87]) {
+          const ta = lerp(t0, t1, f), tb = lerp(t0, t1, f + 0.03);
+          quad(g, c, [at(ta, 0.97), at(tb, 0.97), at(tb, first), at(ta, first)]);
+          const [gx, gy] = at(ta, 0.4); glow(gx, Math.max(gy, 200), 150 * near(ta) + 30, c, 0.3);
+        }
+      }
+      if (style === 3) { // one building wears a giant screen: bands of colour, several storeys tall
+        screenUsed = true;
+        const ta = lerp(t0, t1, 0.12), tb = lerp(t0, t1, 0.88), va = step * 2.2, vb = Math.min(0.92, va + step * 5.5);
+        for (let k = 0; k < 4; k++) {
+          const c = pick(P.signs), a = lerp(va, vb, k / 4), b = lerp(va, vb, (k + 1) / 4);
+          quad(g, mix(c, P.ink, 0.2), [at(ta, b), at(tb, b), at(tb, a), at(ta, a)]);
+          const [gx, gy] = at((ta + tb) / 2, (a + b) / 2); glow(gx, gy, 260 * near(ta), c, 0.22);
+        }
+      }
     }
   }
 
@@ -176,7 +216,7 @@ function buildScene() {
   // neon signs hanging out over the street, facing us; far ones first so near ones overlap them
   signs = [];
   for (const side of [-1, 1]) for (let i = 0; i < 10; i++) {
-    const t = 0.3 + rnd() * 0.58, tall = rnd() < 0.7, s = near(t) * 2.1;
+    const t = 0.12 + rnd() * 0.76, tall = rnd() < 0.7, s = near(t) * 1.6;
     const w = (tall ? 0.03 + rnd() * 0.03 : 0.07 + rnd() * 0.07) * W * s, h = (tall ? 0.13 + rnd() * 0.2 : 0.045 + rnd() * 0.04) * H * s;
     const x = side < 0 ? wallX(side, t) : wallX(side, t) - w, y = baseY(t) - (0.2 + rnd() * 0.55) * H * s - h;
     signs.push({ t, x, y, w, h, tall, color: pick(P.signs) });
@@ -192,19 +232,40 @@ function buildScene() {
 
   // the crowd: everyone stands on the same ground, so they shrink toward the vanishing point together
   crowd = [];
-  for (let i = 0; i < 130; i++) {
+  for (let i = 0; i < 115; i++) {
     const t = Math.min(0.93, -0.22 + 1.12 * Math.pow(rnd(), 0.8)), [x, yg] = across((rnd() * 2 - 1) * 0.93, t), h = PERSON * (yg - VP.y) * (0.9 + rnd() * 0.2);
     crowd.push({ t, x, yg, h, coat: rnd() < 0.78 ? P.ink : pick(COATS), brolly: rnd() > 0.55 ? null : rnd() < 0.45 ? mix(P.ink, P.wallB, 0.7) : rnd() < 0.25 ? 'rgba(150,215,255,0.45)' : pick(BROLLIES) });
   }
-  crowd.sort((a, b) => b.t - a.t); // far people first, near people over them
-  for (const { x, yg, h, coat, brolly } of crowd) {
+  crowd.sort((a, b) => b.t - a.t);
+  // street vendors along both kerbs: awning, a lit counter, lanterns, and someone working behind it
+  stalls = [0.05, 0.19, 0.31, 0.43, 0.54, 0.64, 0.73, 0.81].map((t, i) => {
+    const side = i % 2 ? 1 : -1, tt = t + rnd() * 0.04, [x, yg] = across(side, tt), E = yg - VP.y, w = E * (0.42 + rnd() * 0.16); // backed against the wall
+    return { t: tt, xl: side < 0 ? x : x - w, w, yg, E, color: pick(P.signs), vendor: 0.3 + rnd() * 0.4 };
+  });
+  const drawStall = ({ t, xl, w, yg, E, color, vendor }) => {
+    both(P.ink, ID.sign, [[xl, yg - 0.52 * E], [xl + w, yg - 0.52 * E], [xl + w, yg], [xl, yg]]);
+    quad(g, mix(P.warm, '#ffffff', 0.35), [[xl + 0.05 * w, yg - 0.46 * E], [xl + 0.95 * w, yg - 0.46 * E], [xl + 0.95 * w, yg - 0.2 * E], [xl + 0.05 * w, yg - 0.2 * E]]);
+    quad(g, mix(color, P.ink, 0.45), [[xl, yg - 0.2 * E], [xl + w, yg - 0.2 * E], [xl + w, yg - 0.03 * E], [xl, yg - 0.03 * E]]);
+    const vx = xl + w * vendor;
+    g.fillStyle = P.ink; g.beginPath(); g.arc(vx, yg - 0.36 * E, 0.045 * E, 0, 6.2832); g.fill(); g.fillRect(vx - 0.07 * E, yg - 0.32 * E, 0.14 * E, 0.12 * E);
+    for (let k = 0; k < 6; k++) { // striped awning, wider at the front edge
+      const a = k / 6, b = (k + 1) / 6, top = (f) => xl + w * lerp(0.06, 0.94, f), bot = (f) => xl + w * lerp(-0.07, 1.07, f);
+      both(k % 2 ? '#efe6da' : color, ID.sign, [[top(a), yg - 0.67 * E], [top(b), yg - 0.67 * E], [bot(b), yg - 0.5 * E], [bot(a), yg - 0.5 * E]]);
+    }
+    for (const f of [0.2, 0.5, 0.8]) { g.fillStyle = P.lantern; g.beginPath(); g.ellipse(xl + w * f, yg - 0.445 * E, 0.028 * E, 0.036 * E, 0, 0, 6.2832); g.fill(); glow(xl + w * f, yg - 0.445 * E, 0.15 * E, P.lantern, 0.5); }
+    glow(xl + w / 2, yg - 0.3 * E, 0.95 * E, P.warm, 0.42);
+    reflect(xl, w, yg - 0.46 * E, yg - 0.2 * E, t, P.warm, 0.5);
+  };
+  const drawPerson = ({ x, yg, h, coat, brolly }) => {
     onRoad(() => { g.globalCompositeOperation = 'source-over'; g.fillStyle = 'rgba(3,3,10,0.3)'; g.fillRect(x - h * 0.11, yg, h * 0.22, h * 0.4); }); // their dark reflection
     both(coat, ID.figure, [[x - h * 0.13, yg - h * 0.8], [x + h * 0.13, yg - h * 0.8], [x + h * 0.15, yg - h * 0.4], [x + h * 0.09, yg], [x - h * 0.09, yg], [x - h * 0.15, yg - h * 0.4]]);
     for (const c of [g, m]) {
       c.fillStyle = c === g ? P.ink : ID.figure; c.beginPath(); c.arc(x, yg - h * 0.88, h * 0.08, 0, 6.2832); c.fill();
       if (brolly) { c.fillStyle = c === g ? brolly : ID.figure; c.beginPath(); c.ellipse(x, yg - h * 0.94, h * 0.36, h * 0.19, 0, Math.PI, 0); c.fill(); }
     }
-  }
+  };
+  // people and stalls share the street, so they are drawn together, far ones first
+  [...crowd.map((p) => [p.t, drawPerson, p]), ...stalls.map((st) => [st.t, drawStall, st])].sort((a, b) => b[0] - a[0]).forEach(([, draw, thing]) => draw(thing));
 
   // dark corners pull the eye to the middle
   const vg = g.createRadialGradient(VP.x, VP.y, H * 0.35, VP.x, VP.y, H * 1.05);
@@ -255,7 +316,7 @@ function paintStroke([x, y, len, wid, pass]) {
 // The small things, each a short list of marks painted last.
 function planDetails() {
   details = [];
-  const ink = rgb(P.ink), white = [255, 250, 240], rimA = rgb(P.rimA), rimB = rgb(P.rimB), rain = rgb(P.rain), steam = rgb(P.haze).map((v) => (v + 510) / 3);
+  const ink = rgb(P.ink), white = [255, 250, 240], rimA = rgb(P.rimA), rimB = rgb(P.rimB), rain = rgb(P.rain), steam = rgb(P.haze).map((v) => (v + 510) / 3), warmSteam = rgb(P.warm).map((v) => (v + 255) / 2);
   // lit windows get one crisp dab each, so they do not dissolve into the wall
   for (const [x, y, w, c] of litWindows) if (w < 10 && rnd() < 0.7) details.push(() => mark(x, y, Math.max(3, w), Math.max(2, w * 0.55), 0, rgb(c), 0.85));
   // sign lettering: made-up glyphs built from a few bars, stacked down a tall sign or along a wide one
@@ -289,6 +350,13 @@ function planDetails() {
     if (p.brolly) { ctx.strokeStyle = `rgba(${white},0.5)`; ctx.lineWidth = w; ctx.beginPath(); ctx.ellipse(p.x, p.yg - p.h * 0.94, p.h * 0.36, p.h * 0.19, 0, Math.PI * 1.1, Math.PI * 1.7); ctx.stroke(); }
     for (let i = 0; i < 3; i++) mark(p.x + (rnd() - 0.5) * p.h * 0.2, p.yg + 6 + i * p.h * 0.1, p.h * 0.2, 2.4, (rnd() - 0.5) * 0.1, i % 2 ? ink : rimA, 0.55);
   });
+  // each stall: steam off the hot plate, and a bright core in every lantern
+  for (const st of stalls) {
+    for (let i = 0; i < 12; i++) details.push(() => mark(st.xl + st.w * st.vendor + Math.sin(i * 0.9) * st.E * 0.05, st.yg - st.E * (0.5 + i * 0.045), st.E * (0.07 + i * 0.008), st.E * 0.025 + i * 0.4, -1.2 + Math.sin(i * 0.6) * 0.7, warmSteam, 0.34 - i * 0.022));
+    details.push(() => { for (const f of [0.2, 0.5, 0.8]) mark(st.xl + st.w * f, st.yg - 0.445 * st.E, Math.max(2, st.E * 0.03), Math.max(2, st.E * 0.03), 0, [255, 225, 190], 0.95); });
+  }
+  // rooftops: an antenna with a red light on most of them
+  for (const [x, y, k] of roofs) if (rnd() < 0.75) { const hgt = (50 + rnd() * 110) * k, ox = (rnd() - 0.5) * 60 * k; details.push(() => { paintLine(x + ox, y + 4, x + ox, y - hgt, Math.max(1, 3 * k), ink, 0.9); mark(x + ox, y - hgt, 4, Math.max(2.4, 5 * k), 0, [255, 70, 60], 1); }); }
   // steam from two street grates, lit by whatever is near
   for (const [u, t] of [[-0.3, 0.34], [0.42, 0.56]]) {
     const [x, yg] = across(u, t), k = near(t);
