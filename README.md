@@ -69,6 +69,11 @@ npm run db:remote                      # only after adding a file to migrations/
 npx wrangler secret put ADMIN_EMAILS   # comma-separated; these accounts can open /admin
 ```
 
+Pushes to `main` deploy automatically (Workers Builds). Every pull request gets a preview at
+`https://<branch-name>-awesomeslop.terrydjony.workers.dev`; Cloudflare posts the link as a comment on the PR.
+Previews use their own database (`awesomeslop-preview`), never the real waitlist, and have no Google sign-in.
+Preview links are public to anyone who has the URL.
+
 Already set in production: `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. `DEV_LOGIN` is not set there
 (and is ignored off localhost anyway).
 
