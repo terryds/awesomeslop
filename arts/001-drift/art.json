@@ -1,0 +1,18 @@
+{
+  "title": "drift",
+  "category": "generative",
+  "date": "2026-11-12",
+  "summary": "A few thousand particles following an invisible wind.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "html canvas, single file",
+  "tags": [
+    "generative",
+    "flow field",
+    "animated"
+  ],
+  "specs": {
+    "attempts": "1",
+    "libraries": "none"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "awesomeslop",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-11-01",
+
+  // Static files (css, js, and the art files copied from ./arts by the build step).
+  "assets": { "directory": "./public" },
+
+  // Served at this hostname; Cloudflare creates the DNS record and certificate (the zone is in the same account).
+  "routes": [{ "pattern": "awesomeslop.terrydjony.com", "custom_domain": true }],
+
+  // Waitlist + users.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "awesomeslop", "database_id": "d95433e7-0806-450a-8629-3aa485177a51", "migrations_dir": "./migrations" }
+  ],
+
+  // Turns ./arts/* into src/generated/arts.json + public/a/*. Re-runs when ./arts or ./src changes.
+  "build": { "command": "node scripts/build-content.mjs", "watch_dir": ["arts", "src"] },
+
+  "observability": { "enabled": true }
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>drift</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%}</style>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+let W, H, dpr, particles = [];
+
+const spawn = () => ({ x: Math.random() * W, y: Math.random() * H, life: 60 + Math.random() * 220, hot: Math.random() < 0.05 });
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.max(1, innerWidth * dpr);
+  H = canvas.height = Math.max(1, innerHeight * dpr);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  particles = Array.from({ length: Math.min(2600, Math.round((W * H) / 2200)) }, spawn);
+}
+
+// A smooth field of directions made from three layered waves.
+function angle(x, y, t) {
+  const s = 0.0017 / dpr;
+  return (Math.sin(x * s + t) + Math.cos(y * s * 1.3 - t * 0.7) + Math.sin((x + y) * s * 0.6 + t * 0.4)) * Math.PI;
+}
+
+function frame(ms) {
+  const t = ms * 0.00006;
+  ctx.fillStyle = 'rgba(0,0,0,0.035)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.lineWidth = dpr;
+  for (const p of particles) {
+    const a = angle(p.x, p.y, t), nx = p.x + Math.cos(a) * 1.6 * dpr, ny = p.y + Math.sin(a) * 1.6 * dpr;
+    ctx.strokeStyle = p.hot ? 'rgba(184,255,44,0.75)' : 'rgba(255,255,255,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+    p.x = nx; p.y = ny;
+    if (--p.life < 0 || nx < 0 || ny < 0 || nx > W || ny > H) Object.assign(p, spawn());
+  }
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', resize);
+resize();
+requestAnimationFrame(frame);
+</script>
+</html>

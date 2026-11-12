@@ -1,0 +1,7 @@
+[
+  { "id": "game-scenes", "title": "game scenes", "blurb": "Small worlds you can walk around in." },
+  { "id": "art-styles", "title": "art styles", "blurb": "A look, captured in a prompt: paint, pastel, ink." },
+  { "id": "generative", "title": "generative", "blurb": "Rules that draw themselves, forever." },
+  { "id": "landing-pages", "title": "landing pages", "blurb": "Whole pages from one prompt." },
+  { "id": "profile-photos", "title": "profile photo styles", "blurb": "Styles for a face." }
+]

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>quarter turns</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%}</style>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+const TURN_MS = 700;
+let W, H, size, cols, rows, tiles = [], nextTurn = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.width = Math.max(1, innerWidth * dpr);
+  H = canvas.height = Math.max(1, innerHeight * dpr);
+  size = Math.max(W, H) / 14;
+  cols = Math.ceil(W / size);
+  rows = Math.ceil(H / size);
+  // rot counts quarter turns; from/start describe a turn in progress.
+  tiles = Array.from({ length: cols * rows }, () => ({ rot: Math.floor(Math.random() * 4), from: 0, start: -1 }));
+}
+
+const ease = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+
+function frame(ms) {
+  if (ms > nextTurn) {
+    const t = tiles[Math.floor(Math.random() * tiles.length)];
+    if (t.start < 0) { t.from = t.rot; t.rot += 1; t.start = ms; }
+    nextTurn = ms + 90;
+  }
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.lineWidth = size * 0.12;
+  ctx.lineCap = 'butt';
+  const ox = (W - cols * size) / 2, oy = (H - rows * size) / 2, h = size / 2;
+  tiles.forEach((t, i) => {
+    let rot = t.rot, turning = false;
+    if (t.start >= 0) {
+      const k = (ms - t.start) / TURN_MS;
+      if (k >= 1) t.start = -1;
+      else { rot = t.from + ease(k); turning = true; }
+    }
+    ctx.save();
+    ctx.translate(ox + (i % cols) * size + h, oy + Math.floor(i / cols) * size + h);
+    ctx.rotate((rot * Math.PI) / 2);
+    ctx.strokeStyle = turning ? '#ff5a1f' : '#fff';
+    // Two quarter circles joining the midpoints of adjacent sides.
+    ctx.beginPath(); ctx.arc(-h, -h, h, 0, Math.PI / 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(h, h, h, Math.PI, Math.PI * 1.5); ctx.stroke();
+    ctx.restore();
+  });
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', resize);
+resize();
+requestAnimationFrame(frame);
+</script>
+</html>

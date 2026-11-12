@@ -1,0 +1,15 @@
+# Copy to .dev.vars for local dev. In production set these with `wrangler secret put <NAME>`.
+
+# Any long random string. Signs the session cookie.
+SESSION_SECRET=change-me
+
+# Google OAuth client (console.cloud.google.com > APIs & Services > Credentials > OAuth client ID, type "Web application").
+# Authorized redirect URIs: http://localhost:8787/auth/google/callback and https://<your-domain>/auth/google/callback
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Comma-separated emails allowed to open /admin (the waitlist entries).
+ADMIN_EMAILS=you@example.com
+
+# Local only: lets you sign in as dev@localhost without Google. Ignored on any host that is not localhost.
+DEV_LOGIN=1

@@ -1,0 +1,19 @@
+{
+  "title": "the long way home",
+  "category": "art-styles",
+  "date": "2026-11-12",
+  "summary": "A wheat field at golden hour, painted in front of you one brush mark at a time.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "javascript drawing, canvas 2d, single file",
+  "tags": [
+    "javascript drawing",
+    "painterly",
+    "landscape"
+  ],
+  "specs": {
+    "marks": "about 50,000 per painting",
+    "libraries": "none",
+    "inspired by": "Kevin Ngo's JavaScript drawings (x.com/kevin_t_ngo)"
+  }
+}

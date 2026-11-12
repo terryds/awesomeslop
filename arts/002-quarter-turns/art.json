@@ -1,0 +1,18 @@
+{
+  "title": "quarter turns",
+  "category": "generative",
+  "date": "2026-11-12",
+  "summary": "One tile, four rotations. Loops that keep rewiring themselves.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "html canvas, single file",
+  "tags": [
+    "generative",
+    "truchet",
+    "animated"
+  ],
+  "specs": {
+    "attempts": "1",
+    "libraries": "none"
+  }
+}

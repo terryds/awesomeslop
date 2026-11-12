@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>the long way home</title>
+<style>
+  html,body{margin:0;height:100%;background:#17141f;overflow:hidden}
+  canvas{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;cursor:pointer}
+  #hint{position:fixed;left:14px;bottom:12px;color:#fff;font:11px ui-monospace,Menlo,Consolas,monospace;opacity:0;transition:opacity 1s;text-shadow:0 1px 5px rgba(0,0,0,.8);pointer-events:none}
+  @media (max-width:520px),(max-height:300px){#hint{display:none}}
+</style>
+<canvas id="c" width="1920" height="1200"></canvas>
+<div id="hint">click to paint it again</div>
+<script>
+// A painting made the way a painter works: block in big shapes, then smaller marks, then the details.
+// 1. Draw a plain flat picture of the scene off-screen (never shown).
+// 2. Cover the canvas in brush marks, each one taking its colour from that picture and its direction
+//    from what it is painting (sky hatched on a slant, wheat running to the vanishing point, ...).
+// 3. Paint the small things on top by hand: poles, wires, the cyclist, birds, stalks, poppies.
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+const W = 1920, H = 1200, HZ = 672; // HZ: the horizon
+const VP = { x: W * 0.6, y: HZ }; // where the field's lines meet
+const SUN = { x: W * 0.27, y: HZ - 150 };
+const HS = 1.7; // size of the farmhouse group
+const DURATION = 9000; // ms to paint the whole picture
+
+const PALETTES = [
+  { // golden hour
+    paper: '#eadcc2', skyTop: '#3d6ea6', skyMid: '#8fcfc6', skyLow: '#ffd3a1', sun: '#fff1c2',
+    cloudLit: '#ffe9cc', cloudShade: '#8f7fb4', cloudUnder: '#f39a7c',
+    hillFar: '#b7bfe2', hillMid: '#8b94c9', hillNear: '#5f7a86', green: '#7fa05a',
+    fieldFar: '#f2d48a', fieldNear: '#e0a94c', fieldDark: '#a8672e', fieldLit: '#ffe9a8',
+    road: '#f0cfae', roadShade: '#b98aa0', wall: '#fff0d8', wallShade: '#9c8fc0', roof: '#d9603f', roofShade: '#8c3f4a',
+    tree: '#2f5a4a', treeLit: '#9db85a', shadow: '#5a4a8a', ink: '#2a2444', window: '#ffd25a', poppy: '#e23b2e',
+  },
+  { // blue hour
+    paper: '#d9d3d8', skyTop: '#1f2f6b', skyMid: '#5a6fb5', skyLow: '#f2a7a0', sun: '#ffd9b0',
+    cloudLit: '#f6b7b0', cloudShade: '#4a4f8f', cloudUnder: '#c96f8a',
+    hillFar: '#8088c0', hillMid: '#565f9c', hillNear: '#3b4a70', green: '#4f7a6a',
+    fieldFar: '#b9a6b8', fieldNear: '#8d86a8', fieldDark: '#3f3f6e', fieldLit: '#e3c9c4',
+    road: '#c9b6c8', roadShade: '#6a5f94', wall: '#cfc8e0', wallShade: '#5d5a96', roof: '#8a4a5e', roofShade: '#4a3560',
+    tree: '#1f3350', treeLit: '#4f7f84', shadow: '#2a2a5c', ink: '#141430', window: '#ffd25a', poppy: '#d0506a',
+  },
+];
+
+// ---------- seeded randomness and noise ----------
+let rnd, noiseSeed = 0;
+const mulberry = (a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+const lerp = (a, b, t) => a + (b - a) * t;
+const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7 + noiseSeed) * 43758.5453; return s - Math.floor(s); };
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  return lerp(lerp(hash2(xi, yi), hash2(xi + 1, yi), u), lerp(hash2(xi, yi + 1), hash2(xi + 1, yi + 1), u), v);
+}
+const fbm = (x, y) => vnoise(x, y) * 0.5 + vnoise(x * 2.03, y * 2.03) * 0.25 + vnoise(x * 4.1, y * 4.1) * 0.125 + vnoise(x * 8.3, y * 8.3) * 0.0625;
+const rgb = (hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+const depth = (y) => Math.max(0, (y - HZ) / (H - HZ)); // 0 at the horizon, 1 at the bottom edge
+const cr = (a, b, c, d, t) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (-a + 3 * b - 3 * c + d) * t * t * t);
+
+// ---------- one brush mark: a few bristle lines side by side ----------
+function mark(x, y, len, wid, ang, col, alpha = 0.9) {
+  const cs = Math.cos(ang), sn = Math.sin(ang), n = Math.max(1, Math.round(wid / 2.4));
+  for (let i = 0; i < n; i++) {
+    const off = (i - (n - 1) / 2) * (wid / n) + (rnd() - 0.5) * 1.4, l = len * (0.7 + rnd() * 0.5), shift = (rnd() - 0.5) * len * 0.25;
+    const j = 1 + (rnd() - 0.5) * 0.18, bend = (rnd() - 0.5) * len * 0.14;
+    const x0 = x - (cs * l) / 2 - sn * off + cs * shift, y0 = y - (sn * l) / 2 + cs * off + sn * shift;
+    ctx.strokeStyle = `rgba(${Math.min(255, col[0] * j) | 0},${Math.min(255, col[1] * j) | 0},${Math.min(255, col[2] * j) | 0},${alpha * (0.55 + rnd() * 0.45)})`;
+    ctx.lineWidth = (wid / n) * (0.8 + rnd() * 0.9);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x0 + (cs * l) / 2 - sn * bend, y0 + (sn * l) / 2 + cs * bend, x0 + cs * l, y0 + sn * l);
+    ctx.stroke();
+  }
+}
+// a line painted as a chain of small marks, so it has the same hand as everything else
+function paintLine(x0, y0, x1, y1, wid, col, alpha = 0.9, sag = 0) {
+  const d = Math.hypot(x1 - x0, y1 - y0), steps = Math.max(2, Math.round(d / 9));
+  let px = x0, py = y0;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, x = lerp(x0, x1, t), y = lerp(y0, y1, t) + Math.sin(t * Math.PI) * sag;
+    mark((px + x) / 2, (py + y) / 2, Math.hypot(x - px, y - py) * 1.25, wid, Math.atan2(y - py, x - px), col, alpha);
+    px = x; py = y;
+  }
+}
+
+// ---------- the scene ----------
+let P, ref, mask, road, ridges, details, strokes, cursor, startedAt, finished, house;
+
+function buildScene() {
+  const rc = document.createElement('canvas'), mc = document.createElement('canvas');
+  rc.width = mc.width = W; rc.height = mc.height = H;
+  const g = rc.getContext('2d', { willReadFrequently: true }), m = mc.getContext('2d', { willReadFrequently: true });
+  const blob = (c, x, y, rx, ry, color) => { c.fillStyle = color; c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, 6.2832); c.fill(); };
+
+  // sky
+  const sky = g.createLinearGradient(0, 0, 0, HZ);
+  sky.addColorStop(0, P.skyTop); sky.addColorStop(0.5, P.skyMid); sky.addColorStop(0.9, P.skyLow); sky.addColorStop(1, P.sun);
+  g.fillStyle = sky; g.fillRect(0, 0, W, HZ + 60);
+  const glow = g.createRadialGradient(SUN.x, SUN.y, 0, SUN.x, SUN.y, 620);
+  glow.addColorStop(0, P.sun); glow.addColorStop(0.12, P.sun + 'cc'); glow.addColorStop(0.5, P.skyLow + '66'); glow.addColorStop(1, P.skyLow + '00');
+  g.fillStyle = glow; g.fillRect(0, 0, W, HZ + 60);
+  blob(g, SUN.x, SUN.y, 40, 40, '#fffbe8');
+
+  // clouds: heaps of discs, painted three times: warm underside, cool shade, lit top
+  const clouds = [];
+  for (let i = 0; i < 7; i++) {
+    const cy = 70 + rnd() * (HZ - 300), span = 240 + rnd() * 520, puff = (36 + rnd() * 60) * (1.25 - cy / HZ), cx = rnd() * W, lumps = [];
+    for (let k = 0; k < span / 18; k++) {
+      const u = rnd() * 2 - 1, r = puff * (0.45 + rnd() * 0.6);
+      lumps.push([cx + (u * span) / 2, cy - (1 - u * u) * puff * (0.3 + rnd() * 0.9), r]);
+    }
+    clouds.push(lumps);
+  }
+  for (const lumps of clouds) {
+    for (const [x, y, r] of lumps) blob(g, x, y + r * 0.5, r * 1.25, r * 0.6, P.cloudUnder);
+    for (const [x, y, r] of lumps) blob(g, x, y, r, r * 0.9, P.cloudShade);
+    for (const [x, y, r] of lumps) blob(g, x - r * 0.22 * Math.sign(x - SUN.x), y - r * 0.3, r * 0.78, r * 0.7, P.cloudLit);
+  }
+  for (let i = 0; i < 9; i++) { // thin bars of cloud low over the horizon
+    const x = rnd() * W, y = HZ - 150 + rnd() * 110, w = 120 + rnd() * 340;
+    blob(g, x, y + 5, w, 7 + rnd() * 6, P.cloudUnder); blob(g, x, y, w * 0.9, 5 + rnd() * 4, P.cloudLit);
+  }
+
+  // three ranks of hills
+  ridges = [[78, 95, 0.0016, P.hillFar], [44, 62, 0.0026, P.hillMid], [12, 42, 0.004, P.hillNear]].map(([base, amp, f, color], i) => {
+    const line = (x) => HZ - base - amp * fbm(x * f + i * 31.7, i * 9.1);
+    g.fillStyle = color; g.beginPath(); g.moveTo(0, HZ + 12);
+    for (let x = 0; x <= W; x += 8) g.lineTo(x, line(x));
+    g.lineTo(W, HZ + 12); g.fill();
+    return line;
+  });
+  for (let i = 0; i < 16; i++) { const x = W * 0.8 + i * 15 + rnd() * 6; blob(g, x, ridges[2](x) - 12, 4.5, 15 + rnd() * 9, P.tree); } // poplars
+
+  // the field: gold, lighter far away, cut into wedges that all meet at the vanishing point
+  const field = g.createLinearGradient(0, HZ, 0, H);
+  field.addColorStop(0, P.fieldFar); field.addColorStop(0.45, P.fieldNear); field.addColorStop(1, P.fieldDark);
+  g.fillStyle = field; g.fillRect(0, HZ, W, H - HZ);
+  for (let i = 0, x = -900; x < W + 900; i++) {
+    const w = 60 + rnd() * 190;
+    g.fillStyle = (rnd() < 0.5 ? P.fieldLit : P.fieldDark) + (rnd() < 0.5 ? '44' : '26');
+    g.beginPath(); g.moveTo(VP.x, VP.y); g.lineTo(x, H); g.lineTo(x + w, H); g.fill();
+    x += w;
+  }
+  g.fillStyle = P.green; g.fillRect(0, HZ + 4, W, 20);
+  g.fillStyle = P.fieldLit + 'aa'; g.fillRect(0, HZ + 24, W, 12);
+  g.fillStyle = P.green + '88'; g.fillRect(W * 0.05, HZ + 44, W * 0.4, 16);
+
+  // the road: a line through a few points, wide near us and a thread by the house
+  const ctrl = [[0.26, H + 160], [0.33, H + 40], [0.43, H * 0.9], [0.57, H * 0.79], [0.5, H * 0.685], [0.64, HZ + 46], [0.715, HZ + 34], [0.78, HZ + 30]].map(([x, y]) => [x * W, y]);
+  road = [];
+  for (let i = 0; i < ctrl.length - 3; i++) for (let j = 0; j < 16; j++) road.push([0, 1].map((k) => cr(ctrl[i][k], ctrl[i + 1][k], ctrl[i + 2][k], ctrl[i + 3][k], j / 16)));
+  const edge = (side, scale) => road.map(([x, y], i) => {
+    const [ax, ay] = road[Math.max(i - 1, 0)], [bx, by] = road[Math.min(i + 1, road.length - 1)], d = Math.hypot(bx - ax, by - ay) || 1;
+    const w = (4 + 175 * Math.pow(depth(y), 1.1)) * 0.5 * scale;
+    road[i][2] = -(by - ay) / d; road[i][3] = (bx - ax) / d; road[i][4] = w / scale; // keep the normal and half-width for later
+    return [x + road[i][2] * w * side, y + road[i][3] * w * side];
+  });
+  const ribbon = (c, color, a, b) => { c.fillStyle = color; c.beginPath(); [...a, ...b.reverse()].forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.fill(); };
+  ribbon(g, P.roadShade, edge(1, 1.18), edge(-1, 1.18));
+  ribbon(g, P.road, edge(1, 1), edge(-1, 1));
+  ribbon(g, P.fieldNear + 'cc', edge(1, 0.16), edge(-1, 0.16)); // the grass strip down the middle
+  ribbon(m, '#500000', edge(1, 1.18), edge(-1, 1.18));
+
+  // long shadows, away from the sun
+  house = { x: W * 0.72, y: HZ + 40 };
+  g.fillStyle = P.shadow + '66';
+  g.beginPath(); g.moveTo(house.x - 110 * HS, house.y); g.lineTo(house.x + 130 * HS, house.y); g.lineTo(house.x + 430 * HS, house.y + 50 * HS); g.lineTo(house.x + 120 * HS, house.y + 30 * HS); g.fill();
+
+  // tree, house, barn
+  const leaves = [];
+  for (let i = 0; i < 26; i++) { const a = rnd() * 6.28, d = rnd() * 44; leaves.push([house.x + (-78 + Math.cos(a) * d) * HS, house.y + (-58 + Math.sin(a) * d * 0.9) * HS, (16 + rnd() * 16) * HS]); }
+  g.fillStyle = P.ink; g.fillRect(house.x - 82 * HS, house.y - 30 * HS, 8 * HS, 32 * HS);
+  for (const [x, y, r] of leaves) { blob(g, x, y, r, r, P.tree); blob(m, x, y, r, r, '#f00000'); }
+  for (const [x, y, r] of leaves) blob(g, x - r * 0.3, y - r * 0.35, r * 0.6, r * 0.55, P.treeLit);
+  const poly = (color, pts, id) => { for (const [c, col] of [[g, color], [m, id]]) { c.fillStyle = col; c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(house.x + x * HS, house.y + y * HS) : c.moveTo(house.x + x * HS, house.y + y * HS))); c.fill(); } };
+  poly(P.wallShade, [[96, -30], [140, -34], [140, -2], [96, 0]], '#a00000'); // barn
+  poly(P.roofShade, [[92, -30], [118, -50], [144, -34]], '#a00000');
+  poly(P.wall, [[-34, -46], [30, -46], [30, 0], [-34, 0]], '#a00000'); // sunlit gable wall
+  poly(P.wallShade, [[30, -46], [84, -50], [84, -3], [30, 0]], '#a00000'); // long wall in shade
+  poly(P.roof, [[-40, -44], [-2, -80], [36, -44]], '#a00000');
+  poly(P.roofShade, [[-2, -80], [56, -84], [90, -50], [36, -44]], '#a00000');
+  poly(P.ink, [[52, -92], [62, -93], [62, -78], [52, -78]], '#a00000'); // chimney
+  poly(P.window, [[44, -34], [58, -35], [58, -18], [44, -17]], '#a00000');
+  poly(P.window, [[64, -36], [74, -37], [74, -20], [64, -19]], '#a00000');
+  poly(P.ink, [[-8, -24], [6, -24], [6, 0], [-8, 0]], '#a00000'); // door
+
+  ref = g.getImageData(0, 0, W, H).data;
+  mask = m.getImageData(0, 0, W, H).data;
+}
+const colourAt = (x, y) => { const i = ((Math.min(H - 1, Math.max(0, y)) | 0) * W + (Math.min(W - 1, Math.max(0, x)) | 0)) * 4; return [ref[i], ref[i + 1], ref[i + 2]]; };
+
+// Which way the brush moves depends on what it is painting.
+function directionAt(x, y, pass) {
+  const id = mask[((Math.min(H - 1, Math.max(0, y)) | 0) * W + (Math.min(W - 1, Math.max(0, x)) | 0)) * 4];
+  if (id > 200) return fbm(x * 0.02, y * 0.02) * 12; // foliage: every which way
+  if (id > 120) return (rnd() < 0.5 ? 0 : Math.PI / 2) + (rnd() - 0.5) * 0.15; // walls and roofs: square
+  const toVP = Math.atan2(y - VP.y, x - VP.x);
+  if (id > 40) return toVP + (rnd() - 0.5) * 0.2; // the road runs away from us
+  if (y < ridges[0](x)) return -0.62 + (fbm(x * 0.0035, y * 0.0035) - 0.47) * 1.1; // sky: one slanted hatch, loosened by noise
+  if (y < HZ + 2) return 0.1 + (fbm(x * 0.01, y * 0.01) - 0.5) * 0.7; // hills: along the ridge
+  if (pass === 2 && depth(y) > 0.3) return -Math.PI / 2 + (rnd() - 0.5) * 0.5; // near wheat: upright flicks
+  return toVP + (rnd() - 0.5) * 0.3; // the field: toward the vanishing point
+}
+
+function planStrokes() {
+  strokes = [];
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const diff = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+  [[24, 70, 30], [12, 38, 13], [6.5, 17, 5.5]].forEach(([gap, len, wid], pass) => {
+    const batch = [];
+    for (let y = -gap; y < H + gap; y += gap) for (let x = -gap; x < W + gap; x += gap) {
+      const px = x + (rnd() - 0.5) * gap * 1.6, py = y + (rnd() - 0.5) * gap * 1.6;
+      // the finest marks go only where something changes, and in the foreground
+      if (pass === 2 && rnd() > 0.22 && depth(py) < 0.55 && diff(colourAt(px - 5, py), colourAt(px + 5, py)) + diff(colourAt(px, py - 5), colourAt(px, py + 5)) < 46) continue;
+      batch.push([px, py, len, wid, pass]);
+    }
+    strokes.push(...shuffle(batch));
+  });
+  const fine = []; // an extra-fine pass just for the buildings, so windows and roof edges stay crisp
+  for (let y = house.y - 100 * HS; y < house.y + 6; y += 3.4) for (let x = house.x - 44 * HS; x < house.x + 148 * HS; x += 3.4) {
+    const id = mask[((y | 0) * W + (x | 0)) * 4];
+    if (id > 120 && id < 200) fine.push([x + (rnd() - 0.5) * 3, y + (rnd() - 0.5) * 3, 9, 3.2, 3]);
+  }
+  strokes.push(...shuffle(fine));
+}
+function paintStroke([x, y, len, wid, pass]) {
+  // now and then a mark picks up its neighbour's colour, as a loaded brush does
+  let col = rnd() < 0.06 ? colourAt(x + (rnd() - 0.5) * 60, y + (rnd() - 0.5) * 60) : colourAt(x, y);
+  const j = 0.93 + rnd() * 0.14;
+  col = [col[0] * j, col[1] * j, col[2] * j];
+  mark(x, y, y < HZ && pass < 2 ? len * 1.3 : len, wid, directionAt(x, y, pass), col, pass === 0 ? 0.95 : 0.88);
+}
+
+// The small things, each a short list of marks painted last.
+function planDetails() {
+  details = [];
+  const ink = rgb(P.ink), lit = rgb(P.cloudLit), gold = rgb(P.fieldLit), dark = rgb(P.fieldDark), shade = rgb(P.shadow);
+  // telegraph poles down the left of the road, their shadows, and the wires between them
+  const tops = [];
+  for (const i of [5, 21, 35, 47, 57, 65, 71]) {
+    const [x, y, , , w] = road[i], s = depth(y), bx = x - (w * 1.5 + 10), by = y, h = 26 + 560 * s, t = Math.max(1.2, 13 * s);
+    tops.push([bx, by - h, t, s]);
+    details.push(() => {
+      paintLine(bx, by, bx + h * 1.5, by + h * 0.16, t * 1.2, shade, 0.4);
+      paintLine(bx, by, bx, by - h, t, ink, 0.95);
+      paintLine(bx - t * 0.3, by, bx - t * 0.3, by - h, Math.max(0.8, t * 0.3), lit, 0.8);
+      paintLine(bx - h * 0.09, by - h * 0.92, bx + h * 0.09, by - h * 0.935, t * 0.7, ink, 0.95);
+    });
+  }
+  for (let i = 0; i < tops.length - 1; i++) {
+    const [ax, ay, at, as] = tops[i], [bx, by, , bs] = tops[i + 1], ha = 26 + 560 * as, hb = 26 + 560 * bs;
+    for (const side of [-1, 1]) details.push(() => paintLine(ax + side * ha * 0.08, ay + ha * 0.07, bx + side * hb * 0.08, by + hb * 0.07, Math.max(0.7, at * 0.14), ink, 0.7, ha * 0.06));
+  }
+  // someone cycling home, with a long shadow
+  {
+    const [x, y, , , w] = road[44], s = 13 + 72 * depth(y), cx = x + w * 0.35;
+    details.push(() => {
+      paintLine(cx, y, cx + s * 2.6, y + s * 0.3, s * 0.3, shade, 0.5);
+      ctx.strokeStyle = `rgb(${ink})`; ctx.lineWidth = Math.max(1, s * 0.07);
+      for (const dx of [-0.42, 0.42]) { ctx.beginPath(); ctx.arc(cx + dx * s, y - s * 0.26, s * 0.26, 0, 6.2832); ctx.stroke(); }
+      paintLine(cx - s * 0.42, y - s * 0.26, cx + s * 0.3, y - s * 0.55, s * 0.07, ink);
+      paintLine(cx - s * 0.05, y - s * 0.5, cx + s * 0.08, y - s * 1.05, s * 0.22, rgb(P.poppy), 0.95);
+      paintLine(cx + s * 0.08, y - s * 1.05, cx + s * 0.3, y - s * 0.6, s * 0.08, ink);
+      mark(cx + s * 0.1, y - s * 1.2, s * 0.2, s * 0.2, 0, lit, 1);
+    });
+  }
+  // smoke, and the glow of the windows
+  for (let i = 0; i < 14; i++) details.push(() => mark(house.x + 57 * HS + i * 7 + Math.sin(i * 0.9) * 8, house.y - 96 * HS - i * 10, 22 + i, 7 + i * 0.6, -0.9 + Math.sin(i * 0.7) * 0.6, lit, 0.5 - i * 0.03));
+  details.push(() => { const cx = house.x + 58 * HS, cy = house.y - 27 * HS, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 60); g.addColorStop(0, P.window + '88'); g.addColorStop(1, P.window + '00'); ctx.fillStyle = g; ctx.fillRect(cx - 60, cy - 60, 120, 120); });
+  // birds
+  const fx = W * (0.42 + rnd() * 0.25), fy = H * (0.16 + rnd() * 0.1);
+  for (let i = 0; i < 17; i++) {
+    const x = fx + (rnd() - 0.5) * 380, y = fy + (rnd() - 0.5) * 150 + (x - fx) * -0.12, s = 5 + rnd() * 8, tilt = (rnd() - 0.5) * 0.5;
+    details.push(() => { paintLine(x - s, y - s * 0.45 + tilt * s, x, y, 1.6, ink, 0.85, -s * 0.2); paintLine(x, y, x + s, y - s * 0.5 - tilt * s, 1.6, ink, 0.85, -s * 0.2); });
+  }
+  // bright flecks of sun on the far side of the field
+  for (let i = 0; i < 260; i++) { const y = HZ + 40 + rnd() * rnd() * (H - HZ), x = rnd() * W; details.push(() => mark(x, y, 6 + depth(y) * 26, 2 + depth(y) * 3, -Math.PI / 2 + (rnd() - 0.5) * 0.5, gold, 0.75)); }
+  // foreground: stalks leaning in the wind, some catching the light, and poppies
+  for (let i = 0; i < 300; i++) {
+    const x = rnd() * W, h = 50 + rnd() * rnd() * 240, lean = 0.12 + (rnd() - 0.5) * 0.3, bright = rnd() < 0.35, w = 1.6 + rnd() * 2.4;
+    details.push(() => {
+      paintLine(x, H + 10, x + Math.sin(lean) * h, H + 10 - h, w, bright ? gold : dark, 0.9, h * 0.04);
+      mark(x + Math.sin(lean) * h, H + 4 - h, 20 + rnd() * 12, w * 2.2, -Math.PI / 2 + lean * 1.6, bright ? gold : dark, 0.95);
+    });
+  }
+  for (let i = 0; i < 46; i++) {
+    const y = H - rnd() * rnd() * 330, x = rnd() * W, s = 4 + depth(y) * 9;
+    details.push(() => { mark(x, y, s, s, rnd() * 3, rgb(P.poppy), 1); mark(x, y + s * 0.15, s * 0.3, s * 0.3, 0, ink, 0.9); });
+  }
+}
+
+// paper tooth over the finished picture
+function grain() {
+  const t = document.createElement('canvas'); t.width = t.height = 256;
+  const g = t.getContext('2d'), d = g.createImageData(256, 256);
+  for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 26; }
+  g.putImageData(d, 0, 0);
+  ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.fillStyle = ctx.createPattern(t, 'repeat'); ctx.fillRect(0, 0, W, H); ctx.restore();
+}
+
+// ---------- paint it ----------
+const hint = document.getElementById('hint');
+const isThumb = new URLSearchParams(location.search).has('thumb');
+let paintings = 0;
+function begin(seed) {
+  rnd = mulberry(seed); noiseSeed = seed % 1000;
+  P = PALETTES[paintings++ % PALETTES.length];
+  buildScene(); planStrokes(); planDetails();
+  ctx.lineCap = 'round';
+  ctx.fillStyle = P.paper; ctx.fillRect(0, 0, W, H);
+  cursor = 0; finished = false; startedAt = performance.now();
+  hint.style.opacity = 0;
+}
+function tick(now) {
+  if (!finished) {
+    const total = strokes.length + details.length, target = Math.floor(total * Math.min(1, (now - startedAt) / DURATION)), stopAt = performance.now() + 12;
+    while (cursor < target && performance.now() < stopAt) { cursor < strokes.length ? paintStroke(strokes[cursor]) : details[cursor - strokes.length](); cursor++; }
+    if (cursor >= total) { grain(); finished = true; if (!isThumb) hint.style.opacity = 0.7; }
+  }
+  requestAnimationFrame(tick);
+}
+canvas.addEventListener('click', () => begin((Math.random() * 1e9) | 0));
+begin(20261112);
+requestAnimationFrame(tick);
+</script>
+</html>
