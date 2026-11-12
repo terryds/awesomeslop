@@ -77,6 +77,7 @@ for (const entry of entries) {
     medium: meta.medium ?? (hasLive ? 'html' : 'image'),
     tags: meta.tags ?? [],
     specs: meta.specs ?? {},
+    featured: meta.featured === true,
     kind: hasLive ? 'live' : 'image',
     src: hasLive ? `/a/${slug}/` : `/a/${slug}/${meta.cover}`,
     cover: meta.cover ? `/a/${slug}/${meta.cover}` : null,
