@@ -2,7 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>noodles at 3 a.m.</title>
+<title>rush hour, 3 a.m.</title>
 <style>
   html,body{margin:0;height:100%;background:#07060f;overflow:hidden}
   canvas{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;cursor:pointer}
@@ -12,14 +12,14 @@
 <canvas id="c" width="1920" height="1200"></canvas>
 <div id="hint">click to paint it again</div>
 <script>
-// A night street painted the way a painter works: block in big shapes, then smaller marks, then the details.
+// A crowded night street painted the way a painter works: block in big shapes, then smaller marks, then the details.
 // 1. Draw a plain flat picture of the scene off-screen (never shown): walls, signs, their glow, their reflections.
 // 2. Cover the canvas in brush marks, each taking its colour from that picture and its direction from what it paints.
-// 3. Paint the small things on top by hand: sign lettering, cables, the umbrella's rim light, steam, rain.
+// 3. Paint the small things on top by hand: sign lettering, cables, rim light on the crowd, steam, rain.
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 const W = 1920, H = 1200;
 const VP = { x: W * 0.5, y: H * 0.58 }; // the street runs straight away from us to this point
-const DURATION = 10000; // ms to paint the whole picture
+const DURATION = 11000; // ms to paint the whole picture
 
 const PALETTES = [
   { // magenta and cyan
@@ -54,6 +54,11 @@ const wallX = (side, t) => lerp(side < 0 ? -W * 0.22 : W * 1.22, VP.x, t);
 const baseY = (t) => lerp(H, VP.y, t); // where things at depth t touch the road
 const topY = (t, h) => VP.y - (1 - t) * h * H; // roof line of a building h units tall
 const near = (t) => 1 - t; // how big things are drawn at depth t
+const across = (u, t) => [VP.x + u * (wallX(1, t) - VP.x), baseY(t)]; // a spot on the ground: u is -1 at the left wall, 0 mid-street, +1 at the right wall
+const tOf = (z) => z / (1 + z); // equal steps of real distance z bunch up toward the vanishing point
+// We look down the street from a footbridge, a little above head height, so the crowd spreads out below the horizon.
+const PERSON = 0.4, FLOOR = 0.2, KERB = 0.74; // a person and a storey as fractions of the eye height; where road meets sidewalk
+const COATS = ['#c9a227', '#a8324a', '#2b7a86', '#d8d2e6'], BROLLIES = ['#d83a4a', '#e8c53a', '#3fb7d6', '#e6e2f2', '#b04ad8'];
 
 // ---------- one brush mark: a few bristle lines side by side ----------
 function mark(x, y, len, wid, ang, col, alpha = 0.9) {
@@ -81,7 +86,7 @@ function paintLine(x0, y0, x1, y1, wid, col, alpha = 0.9, sag = 0) {
 }
 
 // ---------- the scene ----------
-let P, ref, mask, details, strokes, cursor, startedAt, finished, signs, litWindows, figure, stall;
+let P, ref, mask, details, strokes, cursor, startedAt, finished, signs, litWindows, crowd;
 const ID = { ground: '#280000', wall: '#500000', sign: '#a00000', figure: '#f00000' }; // what each pixel is, for brush direction
 
 function buildScene() {
@@ -113,20 +118,22 @@ function buildScene() {
   // the two walls of the canyon: a row of buildings on each side, drawn far to near, each with rows of windows
   litWindows = [];
   const cuts = [0, 0.22, 0.38, 0.52, 0.63, 0.73, 0.81, 0.87, 0.92, 0.955, 0.98];
+  const buildings = [];
   for (const side of [-1, 1]) for (let i = cuts.length - 2; i >= 0; i--) {
-    const t0 = cuts[i], t1 = cuts[i + 1], h = lerp(1.5, 0.7, i / (cuts.length - 2)) + rnd() * 0.3;
+    const t0 = cuts[i], t1 = cuts[i + 1], h = lerp(2.6, 0.75, i / (cuts.length - 2)) + rnd() * 0.35;
     const color = mix(mix(P.wallA, P.wallB, rnd()), P.haze, t0 * t0 * 0.3);
     both(color, ID.wall, [[wallX(side, t0), topY(t0, h)], [wallX(side, t1), topY(t1, h)], [wallX(side, t1), baseY(t1)], [wallX(side, t0), baseY(t0)]]);
     quad(g, 'rgba(0,0,0,0.28)', [[wallX(side, t1) - 2, topY(t1, h)], [wallX(side, t1) + 2, topY(t1, h)], [wallX(side, t1) + 2, baseY(t1)], [wallX(side, t1) - 2, baseY(t1)]]);
-    // windows sit at equal steps of real distance z, so they bunch up toward the vanishing point
-    const z0 = t0 / (1 - t0), z1 = t1 / (1 - t1), dz = Math.max(0.1, (z1 - z0) / 12), tOf = (z) => z / (1 + z);
-    for (let z = z0 + dz * 0.3; z < z1 - dz * 0.5; z += dz) for (let v = 0.13; v < 0.97; v += 0.058 / h) {
-      if (rnd() > 0.24) continue;
+    buildings.push({ side, t0, t1 });
+    // windows, storey by storey, starting above the shops
+    const z0 = t0 / (1 - t0), z1 = t1 / (1 - t1), dz = Math.max(0.12, (z1 - z0) / 10);
+    for (let z = z0 + dz * 0.3; z < z1 - dz * 0.5; z += dz) for (let v = (FLOOR * 1.4) / h; v < 0.98; v += FLOOR / h) {
+      if (rnd() > 0.3) continue;
       const ta = tOf(z), tb = tOf(z + dz * 0.55), at = (t, vv) => [wallX(side, t), lerp(baseY(t), topY(t, h), vv)];
-      const pts = [at(ta, v + 0.03 / h), at(tb, v + 0.03 / h), at(tb, v), at(ta, v)];
+      const pts = [at(ta, v + (FLOOR * 0.5) / h), at(tb, v + (FLOOR * 0.5) / h), at(tb, v), at(ta, v)];
       if (pts[0][1] > H || pts[3][1] < 0 || Math.abs(pts[1][0] - pts[0][0]) < 1.5) continue;
       const c = pick(P.windows);
-      quad(g, c + (rnd() < 0.5 ? 'cc' : '77'), pts);
+      quad(g, c + (rnd() < 0.4 ? '99' : '55'), pts);
       litWindows.push([(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[3][1]) / 2, Math.abs(pts[1][0] - pts[0][0]), c]);
     }
   }
@@ -145,6 +152,27 @@ function buildScene() {
     g.fillStyle = gr; g.fillRect(x - w * 0.1, y0, w * 1.2, y1 - y0);
   });
 
+  // sidewalks either side with a pale kerb, and a zebra crossing in front of us
+  for (const sd of [-1, 1]) {
+    quad(g, mix(P.groundFar, '#ffffff', 0.07), [across(sd, 0), across(sd * KERB, 0), across(sd * KERB, 0.985), across(sd, 0.985)]);
+    quad(g, mix(P.groundFar, '#ffffff', 0.4), [across(sd * KERB, 0), across(sd * (KERB - 0.014), 0), across(sd * (KERB - 0.014), 0.985), across(sd * KERB, 0.985)]);
+  }
+  for (let u = -0.62; u < 0.6; u += 0.1) quad(g, 'rgba(214,208,240,0.5)', [across(u, 0.1), across(u + 0.055, 0.1), across(u + 0.055, 0.21), across(u, 0.21)]);
+
+  // lit shopfronts along the foot of every building: the light the crowd is seen against
+  for (const { side, t0, t1 } of buildings) {
+    const z0 = t0 / (1 - t0), z1 = t1 / (1 - t1), dz = Math.max(0.35, (z1 - z0) / 6), top = (t) => baseY(t) - FLOOR * 1.15 * (baseY(t) - VP.y), foot = (t) => baseY(t) - 0.06 * (baseY(t) - VP.y);
+    for (let z = z0; z < z1 - dz * 0.5; z += dz) {
+      if (rnd() < 0.18) continue; // some are shut
+      const ta = tOf(z + dz * 0.08), tb = tOf(z + dz * 0.92), c = rnd() < 0.45 ? P.warm : pick(P.signs), xa = wallX(side, ta), xb = wallX(side, tb);
+      both(mix(c, '#ffffff', 0.2), ID.sign, [[xa, top(ta)], [xb, top(tb)], [xb, foot(tb)], [xa, foot(ta)]]);
+      quad(g, P.ink, [[xa, top(ta)], [xb, top(tb)], [xb, lerp(top(tb), foot(tb), 0.16)], [xa, lerp(top(ta), foot(ta), 0.16)]]); // fascia
+      const cx = (xa + xb) / 2, tm = (ta + tb) / 2;
+      glow(cx, lerp(top(tm), foot(tm), 0.6), Math.abs(xb - xa) * 0.9 + (baseY(tm) - VP.y) * 0.35, c, 0.4);
+      reflect(Math.min(xa, xb), Math.abs(xb - xa), top(tm), foot(tm), tm, c, 0.4);
+    }
+  }
+
   // neon signs hanging out over the street, facing us; far ones first so near ones overlap them
   signs = [];
   for (const side of [-1, 1]) for (let i = 0; i < 10; i++) {
@@ -162,37 +190,25 @@ function buildScene() {
     reflect(s.x, s.w, s.y, s.y + s.h, s.t, s.color, 0.75);
   }
 
-  // the noodle stand: awning, a warm lit box, a counter, two customers, three lanterns
-  {
-    const t = 0.24, k = near(t), x = W * 0.07, yg = baseY(t), w = 440 * k, h = 340 * k;
-    stall = { x, yg, w, h, k };
-    both(P.ink, ID.sign, [[x, yg - h], [x + w, yg - h], [x + w, yg], [x, yg]]);
-    quad(g, P.warm, [[x + 10 * k, yg - h * 0.78], [x + w - 10 * k, yg - h * 0.78], [x + w - 10 * k, yg - h * 0.34], [x + 10 * k, yg - h * 0.34]]);
-    quad(g, mix(P.warm, '#ffffff', 0.5), [[x + w * 0.12, yg - h * 0.74], [x + w * 0.88, yg - h * 0.74], [x + w * 0.88, yg - h * 0.56], [x + w * 0.12, yg - h * 0.56]]);
-    for (let i = 0; i < 6; i++) both(i % 2 ? '#f2e6d8' : P.lantern, ID.sign, [[x - 14 * k + (i * (w + 50 * k)) / 6, yg - h * 1.02], [x - 14 * k + ((i + 1) * (w + 50 * k)) / 6, yg - h * 1.02], [x + 4 * k + ((i + 1) * (w + 40 * k)) / 6, yg - h * 0.8], [x + 4 * k + (i * (w + 40 * k)) / 6, yg - h * 0.8]]);
-    for (const cx of [0.36, 0.66]) { // customers on stools, backs to us
-      const px = x + w * cx;
-      both(P.ink, ID.figure, [[px - 26 * k, yg - h * 0.5], [px + 26 * k, yg - h * 0.5], [px + 22 * k, yg - 8 * k], [px - 22 * k, yg - 8 * k]]);
-      g.fillStyle = P.ink; g.beginPath(); g.arc(px, yg - h * 0.58, 17 * k, 0, 6.2832); g.fill();
-    }
-    for (const lx of [0.14, 0.5, 0.86]) { g.fillStyle = P.lantern; g.beginPath(); g.ellipse(x + w * lx, yg - h * 0.74, 13 * k, 17 * k, 0, 0, 6.2832); g.fill(); glow(x + w * lx, yg - h * 0.74, 70 * k, P.lantern, 0.5); }
-    glow(x + w / 2, yg - h * 0.5, 420 * k, P.warm, 0.5);
-    reflect(x + 10 * k, w - 20 * k, yg - h * 0.78, yg - h * 0.34, t, P.warm, 0.5);
+  // the crowd: everyone stands on the same ground, so they shrink toward the vanishing point together
+  crowd = [];
+  for (let i = 0; i < 130; i++) {
+    const t = Math.min(0.93, -0.22 + 1.12 * Math.pow(rnd(), 0.8)), [x, yg] = across((rnd() * 2 - 1) * 0.93, t), h = PERSON * (yg - VP.y) * (0.9 + rnd() * 0.2);
+    crowd.push({ t, x, yg, h, coat: rnd() < 0.78 ? P.ink : pick(COATS), brolly: rnd() > 0.55 ? null : rnd() < 0.45 ? mix(P.ink, P.wallB, 0.7) : rnd() < 0.25 ? 'rgba(150,215,255,0.45)' : pick(BROLLIES) });
   }
-
-  // someone walking away under a clear umbrella
-  {
-    const t = 0.4, k = near(t), x = W * 0.585, yg = baseY(t), h = 560 * k;
-    figure = { x, yg, h, k };
-    both(P.ink, ID.figure, [[x - h * 0.13, yg - h * 0.74], [x + h * 0.13, yg - h * 0.74], [x + h * 0.17, yg - h * 0.2], [x + h * 0.08, yg], [x - h * 0.08, yg], [x - h * 0.17, yg - h * 0.2]]);
-    g.fillStyle = P.ink; g.beginPath(); g.arc(x, yg - h * 0.82, h * 0.075, 0, 6.2832); g.fill();
-    for (const c of [g, m]) { c.fillStyle = c === g ? 'rgba(150,215,255,0.42)' : ID.figure; c.beginPath(); c.ellipse(x, yg - h * 0.9, h * 0.27, h * 0.17, 0, Math.PI, 0); c.fill(); }
-    onRoad(() => { g.globalCompositeOperation = 'source-over'; quad(g, 'rgba(4,4,12,0.55)', [[x - h * 0.13, yg], [x + h * 0.13, yg], [x + h * 0.1, yg + h * 0.8], [x - h * 0.1, yg + h * 0.8]]); });
+  crowd.sort((a, b) => b.t - a.t); // far people first, near people over them
+  for (const { x, yg, h, coat, brolly } of crowd) {
+    onRoad(() => { g.globalCompositeOperation = 'source-over'; g.fillStyle = 'rgba(3,3,10,0.3)'; g.fillRect(x - h * 0.11, yg, h * 0.22, h * 0.4); }); // their dark reflection
+    both(coat, ID.figure, [[x - h * 0.13, yg - h * 0.8], [x + h * 0.13, yg - h * 0.8], [x + h * 0.15, yg - h * 0.4], [x + h * 0.09, yg], [x - h * 0.09, yg], [x - h * 0.15, yg - h * 0.4]]);
+    for (const c of [g, m]) {
+      c.fillStyle = c === g ? P.ink : ID.figure; c.beginPath(); c.arc(x, yg - h * 0.88, h * 0.08, 0, 6.2832); c.fill();
+      if (brolly) { c.fillStyle = c === g ? brolly : ID.figure; c.beginPath(); c.ellipse(x, yg - h * 0.94, h * 0.36, h * 0.19, 0, Math.PI, 0); c.fill(); }
+    }
   }
 
   // dark corners pull the eye to the middle
   const vg = g.createRadialGradient(VP.x, VP.y, H * 0.35, VP.x, VP.y, H * 1.05);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,8,0.6)');
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,8,0.42)');
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
 
   ref = g.getImageData(0, 0, W, H).data;
@@ -215,7 +231,7 @@ function planStrokes() {
   strokes = [];
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const diff = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
-  [[24, 70, 30], [12, 38, 13], [6.5, 17, 5.5]].forEach(([gap, len, wid], pass) => {
+  [[20, 58, 24], [10, 30, 10], [5.5, 14, 4.5]].forEach(([gap, len, wid], pass) => {
     const batch = [];
     for (let y = -gap; y < H + gap; y += gap) for (let x = -gap; x < W + gap; x += gap) {
       const px = x + (rnd() - 0.5) * gap * 1.6, py = y + (rnd() - 0.5) * gap * 1.6;
@@ -239,7 +255,7 @@ function paintStroke([x, y, len, wid, pass]) {
 // The small things, each a short list of marks painted last.
 function planDetails() {
   details = [];
-  const ink = rgb(P.ink), white = [255, 250, 240], rimA = rgb(P.rimA), rimB = rgb(P.rimB), rain = rgb(P.rain), steam = rgb(P.warm).map((v) => (v + 255) / 2);
+  const ink = rgb(P.ink), white = [255, 250, 240], rimA = rgb(P.rimA), rimB = rgb(P.rimB), rain = rgb(P.rain), steam = rgb(P.haze).map((v) => (v + 510) / 3);
   // lit windows get one crisp dab each, so they do not dissolve into the wall
   for (const [x, y, w, c] of litWindows) if (w < 10 && rnd() < 0.7) details.push(() => mark(x, y, Math.max(3, w), Math.max(2, w * 0.55), 0, rgb(c), 0.85));
   // sign lettering: made-up glyphs built from a few bars, stacked down a tall sign or along a wide one
@@ -265,22 +281,21 @@ function planDetails() {
     paintLine(fx - dir * 150, fy + 22, fx, fy, 2.2, rimA, 0.45); paintLine(fx - dir * 110, fy + 20, fx, fy + 4, 1.6, white, 0.35);
     mark(fx, fy, 30, 7, -0.1 * dir, ink, 1); mark(fx + dir * 12, fy + 1, 4, 3, 0, [255, 70, 70], 1); mark(fx - dir * 12, fy, 4, 3, 0, white, 1);
   });
-  // steam from the stand, lit warm from below
-  for (let i = 0; i < 26; i++) { const x = stall.x + stall.w * (0.25 + rnd() * 0.5) + i * 2, y = stall.yg - stall.h * (0.82 + i * 0.03); details.push(() => mark(x + Math.sin(i * 0.8) * 16, y, 20 + i, 6 + i * 0.4, -1.2 + Math.sin(i * 0.6) * 0.7, steam, 0.32 - i * 0.009)); }
-  // the walker: one edge lit by each colour of the street, a shine on the umbrella, and a broken reflection
-  {
-    const { x, yg, h } = figure;
-    details.push(() => {
-      paintLine(x - h * 0.15, yg - h * 0.7, x - h * 0.16, yg - h * 0.18, 2.6, rimB, 0.9); paintLine(x + h * 0.15, yg - h * 0.7, x + h * 0.16, yg - h * 0.18, 2.6, rimA, 0.9);
-      ctx.strokeStyle = `rgba(${rimB},0.85)`; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.ellipse(x, yg - h * 0.9, h * 0.27, h * 0.17, 0, Math.PI, 0); ctx.stroke();
-      for (const a of [-0.9, -0.35, 0.35, 0.9]) paintLine(x, yg - h * 1.07, x + Math.sin(a) * h * 0.27, yg - h * 0.9, 1.2, white, 0.35);
-      paintLine(x - h * 0.26, yg - h * 0.9, x + h * 0.26, yg - h * 0.9, 1.6, white, 0.5);
-      paintLine(x, yg - h * 0.9, x, yg - h * 0.6, 1.8, ink, 0.9);
-      for (let i = 0; i < 12; i++) mark(x + (rnd() - 0.5) * h * 0.2, yg + 8 + i * h * 0.06, h * 0.16, 2.6, (rnd() - 0.5) * 0.1, i % 3 ? ink : rimA, 0.75);
-    });
+  // people near enough to matter get an edge of light on each side, a shine along the umbrella, a broken reflection
+  for (const p of crowd) if (p.h > 36 && p.yg - p.h < H) details.push(() => {
+    const w = Math.max(1.2, p.h * 0.014);
+    paintLine(p.x - p.h * 0.15, p.yg - p.h * 0.78, p.x - p.h * 0.15, p.yg - p.h * 0.3, w, rimB, 0.75);
+    paintLine(p.x + p.h * 0.15, p.yg - p.h * 0.78, p.x + p.h * 0.15, p.yg - p.h * 0.3, w, rimA, 0.75);
+    if (p.brolly) { ctx.strokeStyle = `rgba(${white},0.5)`; ctx.lineWidth = w; ctx.beginPath(); ctx.ellipse(p.x, p.yg - p.h * 0.94, p.h * 0.36, p.h * 0.19, 0, Math.PI * 1.1, Math.PI * 1.7); ctx.stroke(); }
+    for (let i = 0; i < 3; i++) mark(p.x + (rnd() - 0.5) * p.h * 0.2, p.yg + 6 + i * p.h * 0.1, p.h * 0.2, 2.4, (rnd() - 0.5) * 0.1, i % 2 ? ink : rimA, 0.55);
+  });
+  // steam from two street grates, lit by whatever is near
+  for (const [u, t] of [[-0.3, 0.34], [0.42, 0.56]]) {
+    const [x, yg] = across(u, t), k = near(t);
+    for (let i = 0; i < 30; i++) details.push(() => mark(x + Math.sin(i * 0.7) * 26 * k + (rnd() - 0.5) * 30 * k, yg - i * 13 * k, (30 + i * 2) * k, (9 + i * 0.6) * k, -1.2 + Math.sin(i * 0.5) * 0.8, steam, 0.3 - i * 0.008));
   }
   // rain: thin slanted marks everywhere, and rings where drops land on the road
-  for (let i = 0; i < 1250; i++) { const x = rnd() * W, y = rnd() * H, l = 22 + rnd() * 58; details.push(() => mark(x, y, l, 1.3, 1.34, rain, 0.14 + rnd() * 0.26)); }
+  for (let i = 0; i < 650; i++) { const x = rnd() * W, y = rnd() * H, l = 22 + rnd() * 58; details.push(() => mark(x, y, l, 1.3, 1.34, rain, 0.1 + rnd() * 0.2)); }
   for (let i = 0; i < 170; i++) { const y = VP.y + 30 + rnd() * (H - VP.y - 30), x = VP.x + (rnd() - 0.5) * 2 * (y - VP.y) * 2.6, k = (y - VP.y) / (H - VP.y); details.push(() => { ctx.strokeStyle = `rgba(${rain},${0.2 + rnd() * 0.3})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(x, y, 4 + k * 16, 1 + k * 4, 0, 0, 6.2832); ctx.stroke(); }); }
 }
 
@@ -308,7 +323,7 @@ function begin(seed) {
 }
 function tick(now) {
   if (!finished) {
-    const total = strokes.length + details.length, target = Math.floor(total * Math.min(1, (now - startedAt) / DURATION)), stopAt = performance.now() + 12;
+    const total = strokes.length + details.length, target = Math.floor(total * Math.min(1, (now - startedAt) / DURATION)), stopAt = performance.now() + 14;
     while (cursor < target && performance.now() < stopAt) { cursor < strokes.length ? paintStroke(strokes[cursor]) : details[cursor - strokes.length](); cursor++; }
     if (cursor >= total) { grain(); finished = true; if (!isThumb) hint.style.opacity = 0.7; }
   }
