@@ -219,6 +219,14 @@ app.get('/', (c) => {
 
 // ---------- one art ----------
 
+// Arts that were renamed: old links keep working.
+const MOVED: Record<string, string> = { '007-washing-day': '007-pencil-town' };
+app.get('/art/:slug{.*}', async (c, next) => {
+  const [slug, ...rest] = c.req.param('slug').split('/');
+  const to = MOVED[slug];
+  return to ? c.redirect(['/art', to, ...rest].join('/'), 301) : next();
+});
+
 app.get('/art/:slug/prompt.md', (c) => {
   const art = getArt(c.req.param('slug'));
   if (!art) return c.notFound();
