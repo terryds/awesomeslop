@@ -1,0 +1,24 @@
+{
+  "title": "washing day",
+  "category": "game-scenes",
+  "date": "2026-11-13",
+  "summary": "A hillside village drawn in coloured pencil. Walk the square, climb the steps, duck under the laundry.",
+  "model": "Claude Opus 5.5",
+  "agent": "Claude Code",
+  "medium": "walkable 3d scene, three.js, post-process shader, single file",
+  "tags": [
+    "game scene",
+    "3d",
+    "walkable",
+    "coloured pencil",
+    "post-processing",
+    "procedural"
+  ],
+  "specs": {
+    "controls": "click, WASD, mouse, shift, space, wheel",
+    "libraries": "three.js 0.170",
+    "assets": "none, all made in code",
+    "passes": "lit scene + depth, normals + flat colour, then one pencil shader",
+    "inspired by": "the look of a coloured-pencil town game slice (not its town, character or code)"
+  }
+}
