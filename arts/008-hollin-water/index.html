@@ -449,7 +449,7 @@ const SURF = /* glsl */`
     vec2 m = wcMap(xz + warp * 2.2);
     float thr = .45 + n * .9;
     float inside = smoothstep(thr - .03, thr + .03, m.x);
-    float age = mix(-30., uNow - m.y - climb - n * 2.2, inside);
+    float age = mix(-30., uNow - m.y - climb * .45 - n * .5, inside);
     float edge = inside * (1. - smoothstep(0., .2, m.x - thr));
     // the last wash: a wave of its own out from where it began, colour climbing four times as fast
     if (uFinale.w > 0.) age = max(age, uNow - uFinale.z - uFinale.w * pow(distance(xz, uFinale.xy) / 60., .6) - climb * .25 - n * 2.);
@@ -721,7 +721,7 @@ const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 // ---------- the wash: stamp the time into the map around a point ----------
 let painted = 0, mapDirty = false;
 const WALKABLE = 9000; // roughly how many cells you can reach
-function stamp(x, z, R, now, K = 0.42) {
+function stamp(x, z, R, now, K = 0.1) {
   const reach = R * 1.35 + 1.4;
   const i0 = Math.max(1, Math.floor((x - reach - MAP_X0) / CELL)), i1 = Math.min(MAP_N - 2, Math.ceil((x + reach - MAP_X0) / CELL));
   const j0 = Math.max(1, Math.floor((z - reach - MAP_Z0) / CELL)), j1 = Math.min(MAP_N - 2, Math.ceil((z + reach - MAP_Z0) / CELL));
@@ -867,9 +867,14 @@ function frame() {
   camera.position.copy(camPos); camera.lookAt(camLook); camera.updateMatrixWorld();
 
   // paint: around the walker as they go; before that, a little around where the drifting camera looks
-  if (t - lastStamp > 0.12) {
+  if (t - lastStamp > 0.05) {
     if (mode === 'walk' || q.get('walk') === '1') {
-      if (Math.hypot(P.x - lastAt.x, P.z - lastAt.y) > 0.25 || t - lastStamp > 1) { stamp(P.x, P.z, P.speed > 4.5 ? 4.2 : 3.6, t); lastAt.set(P.x, P.z); lastStamp = t; }
+      if (Math.hypot(P.x - lastAt.x, P.z - lastAt.y) > 0.15 || t - lastStamp > 1) {
+        const R = P.speed > 4.5 ? 4.8 : 4.2;
+        stamp(P.x, P.z, R, t);
+        if (P.speed > 0.5) stamp(P.x + P.vx * 0.8, P.z + P.vz * 0.8, R * 0.9, t); // the wash runs a step ahead of the feet
+        lastAt.set(P.x, P.z); lastStamp = t;
+      }
     } else if (t > 0.4) { stamp(focus.x, focus.z, 3.8, t, 0.6); lastStamp = t; }
     if (mapDirty) { mapTex.needsUpdate = true; mapDirty = false; }
   }
