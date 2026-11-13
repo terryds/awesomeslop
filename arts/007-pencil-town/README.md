@@ -1,4 +1,4 @@
-# washing day
+# pencil town
 
 A hill village on laundry day, drawn in coloured pencil while you walk through it.
 

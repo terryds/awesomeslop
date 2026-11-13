@@ -1,4 +1,4 @@
-Make a single self-contained HTML file: a small third-person 3D game scene called "washing day", drawn as if in coloured pencil on paper. Use three.js 0.170 from a CDN through an import map. No other libraries, no downloaded models, textures, fonts or sounds: everything is made in code.
+Make a single self-contained HTML file: a small third-person 3D game scene called "pencil town", drawn as if in coloured pencil on paper. Use three.js 0.170 from a CDN through an import map. No other libraries, no downloaded models, textures, fonts or sounds: everything is made in code.
 
 THE PLACE
 Monteviola, an invented hill village in the south, on a bright afternoon. A paved square about 50 metres across, ringed by narrow pastel houses two and three storeys high: rose, mint, butter, lavender, peach, sky blue. Every house has white-framed windows with painted shutters, some open, some shut, window boxes of flowers, a door, a few little balconies with iron railings and a striped shop awning or two. Gable roofs in faded terracotta, some facing the square, some side-on, with chimneys.
