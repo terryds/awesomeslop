@@ -10,9 +10,8 @@ It is washing day: lines strung across the top of the steps, across both lanes a
 THE LOOK
 This is the heart of the piece; if something has to give, keep this. Render the scene into targets first (the lit scene with shadows and its depth; then world normals plus the brightness of each surface's flat colour), then draw the whole frame in one post-processing shader:
 - Colour stays, but pastel and a little under-filled: laid down as dense pencil strokes over paper, with the paper showing between them.
-- Light becomes hatching. Lit faces get only a few loose strokes. Shadow gets a layer of strokes, then a crossing layer, then a third, darker one in the deepest shade, each thicker and denser as it darkens. Hatch colour is a deeper, cooler version of the surface colour.
-- Stroke direction changes per surface, chosen from which way it faces. Strokes are short, tapered, a little uneven in pressure.
-- The lines boil: four times a second the hand redraws, so strokes and outlines shift slightly.
+- Strokes live on the surfaces, not the screen: reconstruct each pixel's world position from depth and draw the level lines of its height along one fixed diagonal direction, so strokes are long, parallel, stick to things as you move, and keep a steady spacing of about 4 pixels (blend between octaves as distance changes).
+- Draw like pencil over white paper, in linear light: a faint warm wash where the sun falls, the surface's own colour laid lightly all over, strokes of that colour pressed harder in shade, and across them a second direction of cool violet shadow-pencil strokes where light doesn't reach. A world-space paper tooth breaks each layer up.
 - Soft, wobbly outlines from depth and normal breaks and from changes of flat colour, fading with distance.
 - Paper grain everywhere. Far things fade into pale blue-grey. The sky is loose horizontal strokes of blue with paper-white clouds and lavender undersides.
 - A torn white paper border around the whole frame, and a small handwritten caption in a corner naming where you are ("monteviola, the long steps"), changing as you walk.

@@ -565,7 +565,8 @@ const infoMat = new THREE.ShaderMaterial({
 const pencil = new THREE.ShaderMaterial({
   uniforms: {
     tLit: { value: rtLit.texture }, tInfo: { value: rtInfo.texture }, tDepth: { value: rtLit.depthTexture },
-    uRes: { value: new THREE.Vector2(1, 1) }, uBoil: { value: 0 }, uTime: { value: 0 }, uScale: { value: 1 },
+    uRes: { value: new THREE.Vector2(1, 1) }, uBoil: { value: 0 }, uTime: { value: 0 }, uScale: { value: 1 }, uPx: { value: 5 },
+    uHatchA: { value: new THREE.Vector3(.62, 1, .34).normalize() }, uHatchB: { value: new THREE.Vector3(-.78, 1, .22).normalize() },
     uNear: { value: camera.near }, uFar: { value: camera.far }, uFull: { value: (HEMI + SUN) / Math.PI },
     uInvProj: { value: camera.projectionMatrixInverse }, uCamWorld: { value: camera.matrixWorld },
   },
@@ -573,7 +574,8 @@ const pencil = new THREE.ShaderMaterial({
   fragmentShader: /* glsl */`
     precision highp float;
     uniform sampler2D tLit, tInfo, tDepth;
-    uniform vec2 uRes; uniform float uBoil, uTime, uScale, uNear, uFar, uFull;
+    uniform vec2 uRes; uniform float uBoil, uTime, uScale, uNear, uFar, uFull, uPx;
+    uniform vec3 uHatchA, uHatchB;
     uniform mat4 uInvProj, uCamWorld;
     varying vec2 vUv;
     const vec3 LUMA = vec3(.299, .587, .114);
@@ -600,6 +602,41 @@ const pencil = new THREE.ShaderMaterial({
       float taper = smoothstep(0., .14, f) * smoothstep(1., .78, f);
       return (1. - smoothstep(0., w, abs(y))) * taper * mix(.55, 1., h11(seg * 3.7 + row * .13 + seed));
     }
+    // ---- strokes that live on the surfaces (after @blendi's "coloured pencil", MIT / CC0) ----
+    // Strokes are the level lines of h, a height measured along one fixed direction in the world,
+    // so they stick to things, run long and parallel, and keep a steady spacing on screen.
+    float pcHash(float n){ return fract(sin(n * 127.1) * 43758.5453); }
+    float pcHash3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+    float pcNoise(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+      return mix(mix(mix(pcHash3(i), pcHash3(i + vec3(1, 0, 0)), f.x), mix(pcHash3(i + vec3(0, 1, 0)), pcHash3(i + vec3(1, 1, 0)), f.x), f.y),
+                 mix(mix(pcHash3(i + vec3(0, 0, 1)), pcHash3(i + vec3(1, 0, 1)), f.x), mix(pcHash3(i + vec3(0, 1, 1)), pcHash3(i + vec3(1, 1, 1)), f.x), f.y), f.z); }
+    // the tooth of the paper where the thing meets it; evened out far away, where it would shimmer
+    float pcTooth(vec3 at, float fine){
+      return mix(.5, pcNoise(at * 19.), clamp(1. - fine * 14., 0., 1.)) * .6 + mix(.5, pcNoise(at * 47. + 5.), clamp(1. - fine * 35., 0., 1.)) * .4; }
+    float pcStroke(float W, float d){ return smoothstep(W * .5 + 1., W * .5 - 1., d) * min(1., W * .6); }
+    // one layer of strokes along the level lines of h, covering "cover" (0..1) of the paper.
+    // Spacing is held near uPx pixels by blending between octaves as you walk closer.
+    float pcStrokes(float h, float g, float cover){
+      g += 1e-9;
+      float k = -log2(g * uPx), kf = floor(k), t = k - kf, sc = exp2(kf), P = 1. / (g * sc), x = h * sc;
+      float ic = floor(x + .5), im = floor(x) + .5;
+      float W = cover * P / (1. + t) * 1.3;
+      float a = pcStroke(W * (.65 + .7 * pcHash(ic / sc + 3.7)), abs(x - ic) * P) * (.55 + .45 * pcHash(ic / sc));
+      float b = pcStroke(W * t * (.65 + .7 * pcHash(im / sc + 3.7)), abs(x - im) * P) * (.55 + .45 * pcHash(im / sc));
+      return max(a, b);
+    }
+    // what is left of the paper's white once a thing is drawn: local colour, D 0 in light .. 1 in the dark
+    vec3 pcDraw(vec3 local, float D, vec2 h, vec2 g, vec3 at, float fine){
+      float tooth = pcTooth(at, fine);
+      vec2 wob = vec2(.012 * sin(at.x * 5. + at.y * 3.) + .01 * sin(at.z * 6.3 - at.y * 4.1), .012 * sin(at.z * 4.6 + at.x * 2.7) + .01 * sin(at.y * 5.9 + at.x * 3.3));
+      vec3 shade = mix(local * .5, vec3(.24, .2, .62), .55); // the shadow pencil: its own colour gone dark and cool
+      vec3 left = vec3(1.);
+      left *= mix(vec3(1.), vec3(1., .9, .56), clamp((1. - smoothstep(0., .4, D)) * .34 * (.45 + .9 * tooth), 0., 1.)); // a warm wash where the sun falls
+      left *= mix(vec3(1.), local, clamp((.36 + .45 * smoothstep(0., .7, D)) * (.5 + .85 * tooth), 0., 1.));         // its colour laid lightly all over
+      left *= mix(vec3(1.), local, clamp(pcStrokes(h.x + wob.x, g.x, .45 + .4 * D) * (.62 + .5 * D) * (.55 + .8 * tooth), 0., 1.)); // strokes of it, harder in shade
+      left *= mix(vec3(1.), shade, clamp(pcStrokes(h.y + wob.y, g.y, clamp((D - .24) * 1.35, 0., .82)) * (.5 + .75 * tooth) * .95, 0., 1.)); // crossed by the shadow pencil
+      return left;
+    }
     // draw a stroke layer as tone d (0 none, 1 dense): thicker and longer marks as it darkens
     float layer(float v, float d){ return smoothstep(1. - d * 1.15, 1.18 - d * 1.15, v + .001); }
 
@@ -607,8 +644,8 @@ const pencil = new THREE.ShaderMaterial({
       vec2 fc = gl_FragCoord.xy;
       float S = uScale;
       // boiling: every quarter second the hand redraws, a little to one side
-      vec2 jit = (vec2(h11(uBoil * 1.31 + .2), h11(uBoil * 2.71 + .5)) - .5) * 7. * S;
-      float jang = (h11(uBoil * 5.1) - .5) * .09;
+      vec2 jit = vec2(0.);
+      float jang = 0.;
       vec2 p = fc + jit;
       vec2 wob = (vec2(vn(fc * .03 / S + uBoil * 3.1), vn(fc * .03 / S + 40. + uBoil * 1.7)) - .5) * 2.4 * S / uRes;
       vec2 uv = vUv + wob;
@@ -645,21 +682,15 @@ const pencil = new THREE.ShaderMaterial({
         vec3 base = mix(vec3(g), alb, .82);
         base = mix(base, vec3(1.), .1);
         fog = smoothstep(45., 520., z);
-        // stroke direction: chosen per facing, so each plane gets its own hatch angle
-        vec3 qn = floor(n * 2.5 + .5);
-        float ang = .5 + 1.9 * h21(qn.xz * 1.7 + qn.y * 3.1) + jang;
-        float gap = 4.4 * S;
-        float f0 = strokes(p, ang, gap, 1.);
-        float fill = (.64 + .36 * smoothstep(.05, .5, f0)) * mix(.93, 1., grain);
-        col = mix(paper, base, fill * (1. - fog * .35));
-        // shadow becomes hatching: one layer, then crossed, then a third, darker hand
-        float d = smoothstep(.9, .18, s) * (1. - fog * .7);
-        vec3 hc = mix(base * base * .85, vec3(.36, .34, .52), .3);
-        col = mix(col, hc, layer(strokes(p, ang + .1, gap * .95, 7.), d) * .8);
-        col = mix(col, hc * .9, layer(strokes(p, ang + 1.2, gap * .9, 13.), d - .3) * .75);
-        col = mix(col, vec3(.3, .28, .38), layer(strokes(p, ang - .75, gap * .85, 21.), d - .62) * .5);
-        // a few loose strokes even in full light, so nothing looks printed
-        col = mix(col, base * .85, layer(strokes(p, ang + .05, gap * 1.3, 31.), .25) * .16 * (1. - fog));
+        // where this pixel sits in the world, from depth
+        vec4 vp = uInvProj * vec4(vUv * 2. - 1., texture2D(tDepth, vUv).r * 2. - 1., 1.);
+        vec3 W = (uCamWorld * vec4(vp.xyz / vp.w, 1.)).xyz;
+        vec2 h = vec2(dot(W, uHatchA), dot(W, uHatchB));
+        vec2 gr = vec2(length(vec2(dFdx(h.x), dFdy(h.x))), length(vec2(dFdx(h.y), dFdy(h.y))));
+        float fine = length(fwidth(W));
+        float D = 1. - clamp(pow(clamp(s, 0., 1.5), .8), 0., 1.);
+        vec3 local = pow(mix(vec3(g), alb, .9), vec3(2.2)); // pencil maths in linear light, like real pigment over white
+        col = paper * pow(pcDraw(local, D, h, gr, W, fine), vec3(1. / 2.2));
         col = mix(col, mix(paper, vec3(.8, .84, .9), .55), fog * .65);
         lineCol = mix(base * .38, vec3(.3, .27, .32), .45);
       }
@@ -807,6 +838,7 @@ function resize() {
   rtLit.setSize(w, h); rtInfo.setSize(w, h);
   pencil.uniforms.uRes.value.set(w, h);
   pencil.uniforms.uScale.value = Math.max(0.6, h / 820);
+  pencil.uniforms.uPx.value = 4.2 * pencil.uniforms.uScale.value; // stroke spacing in pixels
   camera.aspect = innerWidth / Math.max(innerHeight, 1);
   camera.updateProjectionMatrix();
 }
@@ -849,7 +881,6 @@ function frame() {
   const zn = zone();
   if (zn !== lastZone && mode === 'walk') { lastZone = zn; where.style.opacity = 0; setTimeout(() => { where.textContent = zn; where.style.opacity = 1; }, 800); }
 
-  pencil.uniforms.uBoil.value = Math.floor(t * 4);
   pencil.uniforms.uTime.value = t;
 
   renderer.shadowMap.needsUpdate = true;
