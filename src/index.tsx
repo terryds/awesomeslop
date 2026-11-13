@@ -249,7 +249,7 @@ app.get('/art/:slug', (c) => {
           {artNo(art.no)}
         </p>
 
-        <div class="frame stage">
+        <div class="frame stage" id="stage">
           <Preview art={art} />
         </div>
 
@@ -259,10 +259,14 @@ app.get('/art/:slug', (c) => {
             {art.summary ? <p class="lede">{art.summary}</p> : null}
           </div>
           <div class="actions">
+            {/* Fullscreens the stage in place (the running iframe keeps its state); falls back to opening the piece itself. */}
+            <a href={art.src} target="_blank" rel="noopener" class="btn btn-lg btn-accent" data-play="#stage">
+              ▶ {art.category === 'game-scenes' ? 'play the game' : art.kind === 'image' ? 'view fullscreen' : 'play fullscreen'}
+            </a>
             <button type="button" class="btn btn-lg" data-copy="#prompt-text" data-copied="copied. paste it to your agent">
               copy prompt for your agent
             </button>
-            <a href={claudeBreakdownUrl(art)} target="_blank" rel="noopener" class="btn btn-lg btn-accent">
+            <a href={claudeBreakdownUrl(art)} target="_blank" rel="noopener" class="btn btn-lg">
               ask claude to break it down ↗
             </a>
             <p class="mono dim hint">
@@ -336,7 +340,7 @@ app.get('/art/:slug', (c) => {
 
             {art.kind === 'live' ? (
               <a href={art.src} target="_blank" rel="noopener" class="btn btn-ghost">
-                open the piece fullscreen ↗
+                open the piece in a new tab ↗
               </a>
             ) : null}
           </aside>
