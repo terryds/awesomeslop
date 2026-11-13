@@ -148,6 +148,8 @@ a { color: inherit; }
 .crumbs a { text-decoration: none; }
 .art { padding-top: 32px; }
 .stage { aspect-ratio: 16 / 9; }
+.stage:fullscreen { aspect-ratio: auto; width: 100vw; height: 100vh; border: 0; background: #000; }
+.stage:fullscreen img { object-fit: contain; }
 .art-head { display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: start; padding: 36px 0 44px; border-bottom: 1px solid var(--line); }
 .actions { display: grid; gap: 10px; width: 330px; }
 .hint { margin: 2px 0 0; line-height: 1.5; }

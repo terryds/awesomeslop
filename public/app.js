@@ -39,3 +39,18 @@ document.addEventListener('keydown', (event) => {
   event.preventDefault();
   search.focus();
 });
+
+// Play buttons: <a href="piece" data-play="#stage"> fullscreens the stage in place, so the running piece
+// keeps its state and a game can grab the pointer. Without the Fullscreen API (iPhone) the link just opens the piece.
+document.addEventListener('click', async (event) => {
+  const link = event.target.closest('[data-play]');
+  const stage = link && document.querySelector(link.dataset.play);
+  if (!stage || !stage.requestFullscreen) return;
+  event.preventDefault();
+  try {
+    await stage.requestFullscreen({ navigationUI: 'hide' });
+    stage.querySelector('iframe')?.focus(); // keys go straight to the piece
+  } catch {
+    window.open(link.href, '_blank', 'noopener');
+  }
+});
