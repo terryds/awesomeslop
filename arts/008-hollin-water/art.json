@@ -1,0 +1,26 @@
+{
+  "title": "hollin water",
+  "category": "game-scenes",
+  "date": "2026-11-13",
+  "summary": "An orchard by a lake, drawn in pencil on white paper. Wherever you walk, watercolour bleeds out from your footsteps and stays.",
+  "model": "Claude Opus 5.5",
+  "agent": "Claude Code",
+  "medium": "walkable 3d scene, three.js, surface shaders + a paper pass, single file",
+  "tags": [
+    "game scene",
+    "3d",
+    "walkable",
+    "watercolour",
+    "pencil",
+    "shaders",
+    "procedural"
+  ],
+  "specs": {
+    "controls": "click, WASD, mouse, shift, space, wheel",
+    "libraries": "three.js 0.170",
+    "assets": "none, all made in code",
+    "passes": "the scene, repainted in its own surface shaders, then one paper pass for outlines, sky and margin",
+    "wash map": "256 x 256 cells over 128 m, each storing how covered it is and when the colour arrived",
+    "inspired by": "watercolour by blendi on patch.gg (MIT / CC0), technique adapted; place and character are new"
+  }
+}
