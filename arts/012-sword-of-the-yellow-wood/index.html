@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sword of the yellow wood</title>
+<style>
+  html,body{margin:0;height:100%;background:#d8cbd0;overflow:hidden}
+  canvas{display:block;width:100%;height:100%;cursor:pointer;touch-action:none}
+  #hud{position:fixed;inset:0;pointer-events:none;color:#fff;font:12px ui-monospace,Menlo,Consolas,monospace;text-shadow:0 1px 6px rgba(40,10,30,.85)}
+  #hint{position:absolute;left:0;right:0;bottom:11%;text-align:center;transition:opacity .6s}
+  #hint b{display:block;font:500 22px Georgia,serif;letter-spacing:.02em;margin-bottom:6px}
+  #keys{position:absolute;left:14px;bottom:12px;opacity:0;transition:opacity .6s}
+  .walking #hint{opacity:0}.walking #keys{opacity:.8}
+  #stat{position:absolute;left:14px;top:12px;opacity:0;transition:opacity .6s;font:15px Georgia,serif;letter-spacing:.03em}
+  #stat span{margin-right:16px}#hp{color:#ff5a4a;font-size:19px;letter-spacing:.08em}#hp i{font-style:normal;color:rgba(255,255,255,.35)}
+  .walking #stat{opacity:1}
+  #msg{position:absolute;left:0;right:0;top:16%;text-align:center;font:500 20px Georgia,serif;opacity:0;transition:opacity .5s}
+  #bar{position:absolute;left:0;top:0;width:84px;height:6px;display:none;background:rgba(40,12,26,.65);border:1px solid rgba(255,244,220,.7)}#bar i{display:block;height:100%;background:#ee4a38}
+  #flash{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 50%,rgba(150,10,20,0) 40%,rgba(150,10,20,.75) 100%)}
+  @media (max-width:520px),(max-height:300px){#hud{display:none}}
+</style>
+<canvas id="c"></canvas>
+<div id="flash"></div>
+<div id="hud">
+  <div id="hint"><b>click to walk</b>mouse to look · W A S D to walk · shift to run · space to jump · click to swing your sword, three in a row · right click or E to dodge</div>
+  <div id="keys">mouse look · W A S D · shift run · space jump · click or F swing ×3 · right click or E dodge · M sound · esc</div>
+  <div id="stat"><span id="hp"></span><span id="ac"></span><span id="br"></span></div>
+  <div id="msg"></div>
+  <div id="bar"><i></i></div>
+</div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}
+</script>
+<script type="module">
+// sword of the yellow wood: a small action RPG in an autumn wood, painted in oils.
+// Nothing is filtered afterwards. Every surface is covered in brush strokes that are fixed in the world:
+// each stroke is one flat quad in one of three paints, cut to a brush shape in its shader.
+import * as THREE from 'three';
+THREE.ColorManagement.enabled = false;   // colours here are the paint colours you see; nothing converts them
+
+const q = new URLSearchParams(location.search), THUMB = q.has('thumb');
+const lerp = (a, b, t) => a + (b - a) * t, clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+let sd = 20261116; const rnd = () => { sd = (sd + 0x6D2B79F5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+const rr = (a, b) => a + (b - a) * rnd();
+function hash(i, j) { let n = Math.imul(i, 374761393) + Math.imul(j, 668265263); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; }
+function vnoise(x, y) { const xi = Math.floor(x), yi = Math.floor(y); let fx = x - xi, fy = y - yi; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy); return lerp(lerp(hash(xi, yi), hash(xi + 1, yi), fx), lerp(hash(xi, yi + 1), hash(xi + 1, yi + 1), fx), fy); }
+function fbm(x, y, o = 3) { let a = .5, s = 0, n = 0; for (let i = 0; i < o; i++) { s += a * vnoise(x, y); n += a; x = x * 2.03 + 17.1; y = y * 2.03 + 9.7; a *= .5; } return s / n; }
+const C = h => new THREE.Color(h), P3 = (a, b, c) => [C(a), C(b), C(c)];
+
+// ---------- the light: one low sun ----------
+const SUN_E = .42, SUN_A = .75;
+const SUN = new THREE.Vector3(Math.cos(SUN_E) * Math.cos(SUN_A), Math.sin(SUN_E), Math.cos(SUN_E) * Math.sin(SUN_A));
+const SDX = -Math.cos(SUN_A), SDZ = -Math.sin(SUN_A), SL = 1 / Math.tan(SUN_E);   // which way shadows fall, and how long per metre of height
+const HAZE_C = C('#cfc3d2'), HAZE_W = C('#ffe6ae'), FOG = .0125;
+
+// ---------- the paints: three per thing (shadow, middle, light) ----------
+const PAL = {
+  lit: P3('#d8851a', '#f2b42a', '#ffe070'), shade: P3('#4a2a50', '#7c3a46', '#a9522e'),
+  pathLit: P3('#c98f5c', '#e8b97c', '#f8dca4'), pathShade: P3('#4c3352', '#6c4459', '#8c5b58'),
+  birch: P3('#8a82a8', '#d6cbc4', '#fff2cc'), dark: P3('#32223e', '#5c3a4a', '#eb9a38'),
+  rock: P3('#544a6c', '#8f87a2', '#ead9b6'), moss: P3('#47683a', '#8b9b3a', '#dccb4c'),
+  leaves: [P3('#b8721a', '#f0b322', '#ffe468'), P3('#a8461a', '#ec7c1e', '#ffb846'), P3('#7a2a22', '#c9472a', '#f2823a'), P3('#5c6e2a', '#9aa838', '#d8d65a'), P3('#6e1626', '#c4242e', '#f45c3c')],
+};
+const tc = new THREE.Color();
+function pick(pal, v, j = .18) { // one of the three paints, by how lit the spot is, never quite the same twice
+  v += rr(-j, j); tc.copy(v < .38 ? pal[0] : v < .7 ? pal[1] : pal[2]).offsetHSL(rr(-.012, .012), rr(-.05, .05), rr(-.035, .035)); return tc;
+}
+const leafPal = () => { const r = rnd(); return r < .4 ? 0 : r < .67 ? 1 : r < .8 ? 2 : r < .92 ? 3 : 4; };
+
+// ---------- the land ----------
+const ground = (x, z) => 6.5 * (fbm(x * .013 + 5, z * .013 + 9) - .5) + .5 * (fbm(x * .07, z * .07, 2) - .5);
+const WORLD = 120, WALK = 62, MAPW = 260, MS = 2048;
+const pathPt = t => { const r = 40 + 7 * Math.sin(3 * t) + 4 * Math.sin(5 * t + 1); return [Math.cos(t) * r, Math.sin(t) * r]; };
+const mpx = v => (v / MAPW + .5) * MS;
+function mapCanvas(bg) { const c = document.createElement('canvas'); c.width = c.height = MS; const x = c.getContext('2d', { willReadFrequently: true }); x.fillStyle = bg; x.fillRect(0, 0, MS, MS); return [c, x]; }
+// the footpath, drawn on a hidden canvas and read back
+const [, pctx] = mapCanvas('#000');
+pctx.lineJoin = pctx.lineCap = 'round';
+for (const [w, a] of [[7, .3], [4.5, .45], [2.6, 1]]) { pctx.strokeStyle = `rgba(255,255,255,${a})`; pctx.lineWidth = w * MS / MAPW; pctx.beginPath(); for (let i = 0; i <= 400; i++) { const p = pathPt(i / 400 * Math.PI * 2); pctx[i ? 'lineTo' : 'moveTo'](mpx(p[0]), mpx(p[1])); } pctx.stroke(); }
+const pathData = pctx.getImageData(0, 0, MS, MS).data;
+const sample = (d, x, z) => d[((clamp(mpx(z), 0, MS - 1) | 0) * MS + (clamp(mpx(x), 0, MS - 1) | 0)) * 4] / 255;
+const pathAt = (x, z) => sample(pathData, x, z);
+
+// ---------- trees: decide where they are and what shape, before any paint ----------
+const trees = [], cells = new Map(), ck = (x, z) => (Math.floor(x / 4) + 500) * 1000 + Math.floor(z / 4) + 500;
+function near(x, z, d) { for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const l = cells.get(ck(x + i * 4, z + j * 4)); if (l) for (const t of l) if (Math.hypot(t.x - x, t.z - z) < d + (t.big ? 5 : 0)) return true; } return false; }
+function addTree(t) {
+  t.y = ground(t.x, t.z); t.blobs = []; t.branches = [];
+  const nb = t.big ? 10 : 4 + (rnd() * 3 | 0);
+  for (let i = 0; i < nb; i++) { // branches reach out and up; a clump of leaves sits at the end of each
+    const y = t.h * rr(.42, .92), a = rnd() * 6.283, len = t.big ? rr(5, 8.5) : rr(1.8, 4.2), up = rr(.35, .9), dx = Math.cos(a), dz = Math.sin(a);
+    const bx = t.x + t.lx * y, bz = t.z + t.lz * y, ex = bx + dx * len, ey = t.y + y + up * len, ez = bz + dz * len;
+    t.branches.push([bx, t.y + y, bz, ex, ey, ez]); t.blobs.push({ x: ex, y: ey, z: ez, R: t.big ? rr(3, 4.2) : rr(1.5, 2.6) });
+  }
+  for (let i = 0; i < (t.big ? 5 : 3); i++) t.blobs.push({ x: t.x + t.lx * t.h + rr(-1.6, 1.6) * (t.big ? 3 : 1), y: t.y + t.h * rr(.86, 1.06), z: t.z + t.lz * t.h + rr(-1.6, 1.6) * (t.big ? 3 : 1), R: t.big ? rr(3, 4.2) : rr(1.6, 2.6) });
+  trees.push(t); const k = ck(t.x, t.z); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(t);
+}
+addTree({ x: 0, z: 0, h: 22, r: .85, kind: 1, pal: 4, lx: .01, lz: -.015, big: true });   // one old red tree in a clearing in the middle
+for (let i = 0; i < 9000 && trees.length < 720; i++) {
+  const r = WORLD * Math.sqrt(rnd()), a = rnd() * 6.283, x = Math.cos(a) * r, z = Math.sin(a) * r;
+  if (r < 13 || pathAt(x, z) > .25 || near(x, z, 3.3)) continue;
+  addTree({ x, z, h: rr(11, 19), r: rr(.15, .3), kind: rnd() < .6 ? 0 : 1, pal: leafPal(), lx: rr(-.045, .045), lz: rr(-.045, .045), far: r > 82 });
+}
+// their shadows, drawn long on a second hidden canvas: this is the only "shadow map", made once
+const [shadowCanvas, sctx] = mapCanvas('#fff');
+sctx.lineCap = 'round';
+for (const t of trees) {
+  const L = t.h * SL; sctx.strokeStyle = 'rgba(0,0,0,.92)'; sctx.lineWidth = Math.max(2, t.r * 2.5 * MS / MAPW);
+  sctx.beginPath(); sctx.moveTo(mpx(t.x), mpx(t.z)); sctx.lineTo(mpx(t.x + SDX * L), mpx(t.z + SDZ * L)); sctx.stroke();
+  sctx.fillStyle = 'rgba(0,0,0,.9)';
+  for (const b of t.blobs) { const hgt = b.y - t.y, s = MS / MAPW, R = b.R * (t.big ? .7 : .5); sctx.beginPath(); sctx.ellipse(mpx(b.x + SDX * hgt * SL), mpx(b.z + SDZ * hgt * SL), R * 1.5 * s, R * s, Math.atan2(SDZ, SDX), 0, 6.283); sctx.fill(); }
+}
+const shadowData = sctx.getImageData(0, 0, MS, MS).data;
+const lightAt = (x, z) => sample(shadowData, x, z);
+
+// ---------- strokes ----------
+// Two kinds. A fixed stroke lies on a surface (ground, bark, stone, cloth, sky). A facing stroke is a leaf or a
+// blade that turns to the viewer round a point that never moves. Both write depth, so nothing is ever sorted:
+// which stroke is on top is decided once, by a number each stroke carries, never by where the camera is.
+const newSet = () => ({ pos: [], u: [], v: [], col: [], misc: [] });
+const CH = 40, NCH = 6, chunk = (x, z) => clamp(Math.floor((z + WORLD) / CH), 0, NCH - 1) * NCH + clamp(Math.floor((x + WORLD) / CH), 0, NCH - 1);
+const FIX = Array.from({ length: NCH * NCH }, newSet), BB = Array.from({ length: NCH * NCH }, newSet);
+// a stroke on a surface: n is the surface normal, u the way the brush moved (both unit length)
+function surf(s, px, py, pz, nx, ny, nz, ux, uy, uz, hl, hw, c, seed = rnd(), shape = 0) {
+  s.pos.push(px, py, pz); s.u.push(ux * hl, uy * hl, uz * hl);
+  s.v.push((ny * uz - nz * uy) * hw, (nz * ux - nx * uz) * hw, (nx * uy - ny * ux) * hw);
+  s.col.push(c.r, c.g, c.b); s.misc.push(seed, shape);
+}
+function face(s, px, py, pz, hl, hw, ang, c, shape = 1, sway = 1) { s.pos.push(px, py, pz); s.u.push(hl, hw, ang); s.col.push(c.r, c.g, c.b); s.misc.push(rnd(), shape, sway); }
+const N = new THREE.Vector3(), U = new THREE.Vector3(), W = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+function tangent(twist) { // a brush direction lying in the surface whose normal is N, turned by twist
+  U.crossVectors(N, Math.abs(N.y) > .9 ? W.set(1, 0, 0) : UP).normalize(); W.crossVectors(N, U); const c = Math.cos(twist), s = Math.sin(twist); U.multiplyScalar(c).addScaledVector(W, s);
+}
+
+const HAZE = `
+uniform vec3 uSun, uHazeC, uHazeW; uniform float uFog;
+vec3 haze(vec3 col, vec3 wc){ vec3 dv = wc - cameraPosition; float d = length(dv); float f = min(.94, 1. - exp(-pow(d * uFog, 1.5)));
+  return mix(col, mix(uHazeC, uHazeW, pow(max(dot(dv / d, uSun), 0.), 3.)), f); }`;
+const UNI = { uSun: { value: SUN }, uHazeC: { value: HAZE_C }, uHazeW: { value: HAZE_W }, uFog: { value: FOG }, uTime: { value: 0 }, uShade: { value: 0 }, uFlash: { value: 0 }, uCenter: { value: new THREE.Vector3() } };
+const FRAG = `
+varying vec2 vUv; varying vec3 vCol; varying vec2 vMisc;
+float h1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
+void main(){
+  float x = vUv.x, y = vUv.y, seed = vMisc.x, m; vec3 c = vCol;
+  if (vMisc.y < .5) {            // a dab of a flat brush: bristle streaks, ragged ends, a ridge of thick paint down one side
+    float bid = floor((y * .5 + .5) * 7.), b = h1(bid + seed * 91.);
+    float e0 = 1. - .42 * h1(bid * 1.7 + seed * 13.), e1 = 1. - .42 * h1(bid * 2.3 + seed * 29.);
+    m = min(min(x + e0, e1 - x), .92 - .08 * sin(x * 5. + seed * 40.) - abs(y));
+    c *= .92 + b * .16; c += .07 * smoothstep(.4, 1., y) - .09 * smoothstep(-.4, -1., y);
+  } else if (vMisc.y < 1.5) {    // a leaf: one pointed touch, lighter on one half, a dark rib
+    m = (1. - x * x) * .85 - abs(y); c *= y > 0. ? 1.07 : .92; c *= 1. - .16 * step(abs(y), .06);
+  } else {                       // a blade, drawn from the root up
+    float t = x * .5 + .5; m = pow(1. - t, .8) - abs(y); c *= .78 + .32 * t;
+  }
+  float a = clamp(m / max(fwidth(m), 1e-4) + .5, 0., 1.);
+  if (a < .04) discard;
+  gl_FragColor = vec4(c, a);
+}`;
+const fixVert = `
+attribute vec3 iPos, iU, iV, iCol; attribute vec2 iMisc; uniform float uShade, uFlash;
+varying vec2 vUv; varying vec3 vCol; varying vec2 vMisc;
+${HAZE}
+void main(){
+  vUv = position.xy; vMisc = iMisc; vec3 col = iCol;
+#ifdef SKY
+  vec3 wp = cameraPosition + iPos + iU * position.x + iV * position.y;
+#else
+  vec3 wc = (modelMatrix * vec4(iPos, 1.)).xyz, wU = mat3(modelMatrix) * iU, wV = mat3(modelMatrix) * iV, n = normalize(cross(wU, wV));
+  wc += n * iMisc.x * (.03 + .0025 * distance(wc, cameraPosition));   // each stroke sits at its own depth, so order never flickers
+  vec3 wp = wc + wU * position.x + wV * position.y;
+#ifdef DYN
+  float l = dot(n, uSun) + (iMisc.x - .5) * .7 - uShade * .85;         // things that move pick their paint each frame
+  col = l > .3 ? min(iCol * 1.45 + vec3(.1, .07, 0.), 1.) : l > -.25 ? iCol : iCol * vec3(.45, .42, .62);
+  col = mix(col, vec3(1., .93, .8), uFlash);
+#endif
+  col = haze(col, wc);
+#endif
+  vCol = col; gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.);
+}`;
+const bbVert = `
+attribute vec3 iPos, iU, iCol, iMisc; uniform float uTime; uniform vec3 uCenter;
+varying vec2 vUv; varying vec3 vCol; varying vec2 vMisc;
+${HAZE}
+void main(){
+  vUv = position.xy; vMisc = iMisc.xy; float seed = iMisc.x, ang = iU.z; vec3 c = iPos;
+#ifdef FALL
+  c.y = mod(iPos.y - uTime * (.7 + seed * .9), 17.);
+  c.xz += vec2(sin(uTime * (.7 + seed) + seed * 50.), cos(uTime * (.5 + seed * .7) + seed * 31.)) * 1.1 + uTime * vec2(.35, .12);
+  c.xz = mod(c.xz - uCenter.xz + 22., 44.) - 22. + uCenter.xz; c.y += uCenter.y - 2.5;
+  ang += uTime * (1.2 + seed * 3.);
+#endif
+  vec3 wc = (modelMatrix * vec4(c, 1.)).xyz; vec2 o;
+  ang += sin(uTime * (1.3 + seed) + seed * 40.) * .3 * iMisc.z;
+  if (iMisc.y > 1.5) { float t = position.x * .5 + .5; o = vec2(t * 2. * iU.x, position.y * iU.y); ang += t * sin(uTime * 1.1 + wc.x * .3 + seed * 9.) * .2 * iMisc.z; }
+  else { o = position.xy * iU.xy; wc.xz += sin(uTime * 1.1 + seed * 60.) * .05 * iMisc.z; }
+  float cs = cos(ang), sn = sin(ang); o = vec2(o.x * cs - o.y * sn, o.x * sn + o.y * cs);
+  vec4 mv = viewMatrix * vec4(wc, 1.); mv.xy += o;
+  vCol = haze(iCol, wc); gl_Position = projectionMatrix * mv;
+}`;
+const mat = (vertexShader, defines = {}, extra = {}) => new THREE.ShaderMaterial({ uniforms: UNI, vertexShader, fragmentShader: FRAG, defines, side: THREE.DoubleSide, alphaToCoverage: true, ...extra });
+const fixMat = mat(fixVert), dynMat = mat(fixVert, { DYN: 1 }), skyMat = mat(fixVert, { SKY: 1 }, { depthTest: false, depthWrite: false }), bbMat = mat(bbVert), fallMat = mat(bbVert, { FALL: 1 });
+const QUAD = new THREE.PlaneGeometry(2, 2);
+function build(s, material, bb) {
+  const g = new THREE.InstancedBufferGeometry(); g.index = QUAD.index; g.setAttribute('position', QUAD.attributes.position);
+  const at = (n, a, k) => g.setAttribute(n, new THREE.InstancedBufferAttribute(new Float32Array(a), k));
+  at('iPos', s.pos, 3); at('iU', s.u, 3); if (!bb) at('iV', s.v, 3); at('iCol', s.col, 3); at('iMisc', s.misc, bb ? 3 : 2);
+  g.instanceCount = s.pos.length / 3;
+  const b = new THREE.Box3().setFromArray(s.pos); g.boundingSphere = b.getBoundingSphere(new THREE.Sphere()); g.boundingSphere.radius += 4;
+  return new THREE.Mesh(g, material);
+}
+
+// ---------- plain shapes under the paint, in the darkest paint, so no gap ever shows through ----------
+const SP = [], SC = [];
+function tube(rings, c, sides = 6) {
+  for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < sides; j++) {
+    const a = rings[i], b = rings[i + 1], t0 = j / sides * 6.2832, t1 = (j + 1) / sides * 6.2832, c0 = Math.cos(t0), s0 = Math.sin(t0), c1 = Math.cos(t1), s1 = Math.sin(t1);
+    SP.push(a[0] + c0 * a[3], a[1], a[2] + s0 * a[3], b[0] + c0 * b[3], b[1], b[2] + s0 * b[3], b[0] + c1 * b[3], b[1], b[2] + s1 * b[3], a[0] + c0 * a[3], a[1], a[2] + s0 * a[3], b[0] + c1 * b[3], b[1], b[2] + s1 * b[3], a[0] + c1 * a[3], a[1], a[2] + s1 * a[3]);
+    for (let k = 0; k < 6; k++) SC.push(c.r, c.g, c.b);
+  }
+}
+const solidVert = `attribute vec3 aCol; varying vec3 vW, vC; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; vC = aCol; gl_Position = projectionMatrix * viewMatrix * w; }`;
+const solidFrag = `varying vec3 vW, vC; uniform vec3 uCol, uLo, uHi; uniform sampler2D uMap; ${HAZE}
+void main(){ vec3 c = uCol;
+#ifdef VCOL
+  c = vC;
+#endif
+#ifdef GROUND
+  c = mix(uLo, uHi, texture2D(uMap, vec2(vW.x / ${MAPW}. + .5, .5 - vW.z / ${MAPW}.)).r);
+#endif
+  gl_FragColor = vec4(haze(c, vW), 1.); }`;
+const solid = (hex, defines = {}, u = {}) => new THREE.ShaderMaterial({ uniforms: { ...UNI, uCol: { value: C(hex || '#000') }, ...u }, vertexShader: solidVert, fragmentShader: solidFrag, defines, side: THREE.DoubleSide });
+
+// ---------- scene ----------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = HAZE_C.clone();
+const camera = new THREE.PerspectiveCamera(58, 1, .15, 900);
+
+// ground: an underpainting, then about 130,000 dabs laid along the fall of the light
+{
+  const g = new THREE.PlaneGeometry(700, 700, 200, 200); g.rotateX(-Math.PI / 2); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, ground(p.getX(i), p.getZ(i))); const tex = new THREE.CanvasTexture(shadowCanvas);
+  scene.add(new THREE.Mesh(g, solid(0, { GROUND: 1 }, { uMap: { value: tex }, uLo: { value: C('#5e3148') }, uHi: { value: C('#e9a428') } })));
+}
+const SA = Math.atan2(SDZ, SDX);
+function gnormal(x, z) { const e = .6; N.set(ground(x - e, z) - ground(x + e, z), 2 * e, ground(x, z - e) - ground(x, z + e)).normalize(); }
+function gstroke(x, z, hl, hw, c, seed, shape, ang) {
+  gnormal(x, z); U.set(Math.cos(ang), 0, Math.sin(ang)); U.addScaledVector(N, -U.dot(N)).normalize();
+  surf(FIX[chunk(x, z)], x, ground(x, z), z, N.x, N.y, N.z, U.x, U.y, U.z, hl, hw, c, seed, shape);
+}
+for (let i = 0; i < 132000; i++) {
+  const inner = i < 86000, r = inner ? 82 * Math.sqrt(rnd()) : Math.sqrt(lerp(80 * 80, WORLD * WORLD, rnd())), a = rnd() * 6.283, x = Math.cos(a) * r, z = Math.sin(a) * r;
+  const L = lightAt(x, z) > .5, onPath = rnd() < pathAt(x, z), k = inner ? 1 : 1.6;
+  const c = pick(L ? (onPath ? PAL.pathLit : PAL.lit) : (onPath ? PAL.pathShade : PAL.shade), fbm(x * .16, z * .16, 2) * 1.5 - .25);
+  gstroke(x, z, rr(.45, .95) * k, rr(.15, .3) * k, c, rnd() * .6, 0, SA + (fbm(x * .05 + 40, z * .05, 2) - .5) * 1.9 + rr(-.25, .25));
+}
+// fallen leaves on top: single bright touches
+for (let i = 0; i < 40000; i++) {
+  const red = i < 3500, r = (red ? 15 : 86) * Math.sqrt(rnd()), a = rnd() * 6.283, x = Math.cos(a) * r, z = Math.sin(a) * r, L = lightAt(x, z);
+  if (!red && pathAt(x, z) > .7 && rnd() < .6) continue;
+  gstroke(x, z, rr(.12, .25), rr(.07, .13), pick(PAL.leaves[red ? 4 : leafPal()], L > .5 ? rr(.5, 1) : rr(0, .45), 0), rr(.65, 1), 1, rnd() * 6.283);
+}
+
+// trees: bark in long upright strokes, lit on the sun side; leaves as single touches in clumps
+for (const t of trees) {
+  const fs = FIX[chunk(t.x, t.z)], bs = BB[chunk(t.x, t.z)], pal = t.kind ? PAL.dark : PAL.birch, lp = PAL.leaves[t.pal];
+  const rad = y => t.r * (1 - .55 * y / t.h) + t.r * .6 * Math.exp(-y * 2.2), base = lightAt(t.x - SDX * .9, t.z - SDZ * .9);
+  tube([0, .6, t.h * .5, t.h].map(y => [t.x + t.lx * y, t.y + y - (y ? 0 : .4), t.z + t.lz * y, rad(y) * .96]), pal[0]);
+  const step = t.far ? 1.7 : 1.05, per = t.far ? 4 : t.big ? 11 : 5;
+  for (let y = .2; y < t.h; y += step) for (let j = 0; j < per; j++) {
+    const th = rnd() * 6.283, yy = y + rr(-.4, .4), r = rad(yy), nx = Math.cos(th), nz = Math.sin(th);
+    const lit = (nx * SUN.x + nz * SUN.z) * .62 + .45, dapple = lerp(base, 1, sstep(1.5, 8, yy)) * (.55 + .9 * fbm(t.x + yy * .35, t.z + th, 2));
+    const c = pick(pal, lit * clamp(dapple, .25, 1.1), .12), tw = rr(-.07, .07);
+    surf(fs, t.x + t.lx * yy + nx * r, t.y + yy, t.z + t.lz * yy + nz * r, nx, 0, nz, t.lx - nz * tw, 1, t.lz + nx * tw, rr(.6, 1.15) * (t.far ? 1.5 : 1), r * rr(.6, .85), c, rnd() * .6);
+    if (!t.kind && !t.far && rnd() < .3) surf(fs, t.x + t.lx * yy + nx * r, t.y + yy + rr(-.4, .4), t.z + t.lz * yy + nz * r, nx, 0, nz, -nz, rr(-.1, .1), nx, r * rr(.45, .8), rr(.03, .06), tc.set('#33263a'), rr(.8, 1));   // the dark marks on a birch
+  }
+  for (const b of t.branches) { // a branch is two thin strokes crossed, so it shows from every side
+    const dx = b[3] - b[0], dy = b[4] - b[1], dz = b[5] - b[2], len = Math.hypot(dx, dy, dz), w = t.big ? .22 : rr(.04, .08);
+    U.set(dx, dy, dz).divideScalar(len); N.crossVectors(U, UP).normalize(); W.crossVectors(U, N);
+    tc.copy(pal[rnd() < .5 ? 0 : 1]);
+    surf(fs, b[0] + dx * .5, b[1] + dy * .5, b[2] + dz * .5, N.x, N.y, N.z, U.x, U.y, U.z, len * .52, w, tc, .5); surf(fs, b[0] + dx * .5, b[1] + dy * .5, b[2] + dz * .5, W.x, W.y, W.z, U.x, U.y, U.z, len * .52, w, tc, .5);
+  }
+  for (const b of t.blobs) for (let i = 0, n = t.big ? 70 : t.far ? 13 : 22; i < n; i++) {
+    N.set(rr(-1, 1), rr(-1, 1), rr(-1, 1)); if (N.lengthSq() > 1) { i--; continue; } N.normalize(); const d = b.R * rr(.45, 1), k = t.big ? 1.35 : t.far ? 1.4 : 1;
+    const hl = rr(.22, .42) * k;
+    face(bs, b.x + N.x * d, b.y + N.y * d * .7, b.z + N.z * d, hl, hl * rr(.4, .55), rnd() * 6.283, pick(lp, N.dot(SUN) * .42 + .5 + N.y * .12));
+  }
+}
+// saplings at eye level, ferns and grass at your feet
+for (let i = 0; i < 280; i++) {
+  const r = 86 * Math.sqrt(rnd()), a = rnd() * 6.283, x = Math.cos(a) * r, z = Math.sin(a) * r; if (r < 6 || pathAt(x, z) > .3) continue;
+  const y = ground(x, z), h = rr(1.8, 4.6), lx = rr(-.12, .12), lz = rr(-.12, .12), L = lightAt(x, z), lp = PAL.leaves[leafPal()], fs = FIX[chunk(x, z)], bs = BB[chunk(x, z)];
+  tc.set(L > .5 ? '#6a4a52' : '#33243c');
+  surf(fs, x + lx * h * .5, y + h * .5, z + lz * h * .5, 1, 0, 0, lx, 1, lz, h * .52, .035, tc, .5); surf(fs, x + lx * h * .5, y + h * .5, z + lz * h * .5, 0, 0, 1, lx, 1, lz, h * .52, .035, tc, .5);
+  for (let j = 0; j < 34; j++) { const yy = h * rr(.35, 1.05), rad = rr(.15, 1) * (1.15 - yy / h * .6), b = rnd() * 6.283, hl = rr(.13, .24); face(bs, x + lx * yy + Math.cos(b) * rad, y + yy, z + lz * yy + Math.sin(b) * rad, hl, hl * .5, rnd() * 6.283, pick(lp, L * .55 + rr(.1, .45))); }
+}
+const FERN = ['#3f6f4c', '#c9a227', '#f4d44c', '#e2782a', '#5c8c3a', '#f0b030'].map(C), DUSK = C('#3a2748');
+for (let i = 0; i < 3600; i++) {
+  const r = 90 * Math.sqrt(rnd()), a = rnd() * 6.283, x = Math.cos(a) * r, z = Math.sin(a) * r; if (pathAt(x, z) > .5) continue;
+  const y = ground(x, z), L = lightAt(x, z) > .5, bs = BB[chunk(x, z)], base = FERN[rnd() * FERN.length | 0], n = 4 + (rnd() * 5 | 0), big = rr(.6, 1.5);
+  for (let j = 0; j < n; j++) { tc.copy(base).offsetHSL(rr(-.02, .02), 0, rr(-.05, .05)); if (!L) tc.lerp(DUSK, .5); face(bs, x + rr(-.3, .3), y - .03, z + rr(-.3, .3), rr(.2, .42) * big, rr(.04, .07) * big, Math.PI / 2 + rr(-.75, .75), tc, 2, 1); }
+}
+// boulders, mossy on top
+const rocks = [];
+for (let i = 0; i < 16; i++) {
+  const r = rr(14, 80), a = rnd() * 6.283, x = Math.cos(a) * r, z = Math.sin(a) * r; if (pathAt(x, z) > .15 || near(x, z, 2.2)) { i--; continue; }
+  const R = rr(.7, 1.7), y = ground(x, z) + R * .2, L = lightAt(x - SDX * R, z - SDZ * R), fs = FIX[chunk(x, z)]; rocks.push({ x, z, r: R * .95 });
+  const ico = new THREE.IcosahedronGeometry(R * .97, 1).attributes.position; for (let j = 0; j < ico.count; j++) { SP.push(x + ico.getX(j), y + ico.getY(j) * .68, z + ico.getZ(j)); SC.push(PAL.rock[0].r, PAL.rock[0].g, PAL.rock[0].b); }
+  for (let j = 0; j < 80; j++) {
+    N.set(rr(-1, 1), rr(-.3, 1), rr(-1, 1)).normalize(); const px = x + N.x * R, py = y + N.y * R * .68, pz = z + N.z * R; N.y /= .68; N.normalize(); tangent(rnd() * 6.283);
+    surf(fs, px, py, pz, N.x, N.y, N.z, U.x, U.y, U.z, R * rr(.25, .42), R * rr(.1, .18), pick(N.y > .55 && rnd() < .6 ? PAL.moss : PAL.rock, (N.dot(SUN) * .55 + .45) * (.45 + .55 * L)), rnd() * .7);
+  }
+}
+{
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(SP, 3)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(SC, 3));
+  const m = new THREE.Mesh(g, solid(0, { VCOL: 1 })); m.frustumCulled = false; scene.add(m);
+}
+for (let i = 0; i < NCH * NCH; i++) { if (FIX[i].pos.length) scene.add(build(FIX[i], fixMat)); if (BB[i].pos.length) scene.add(build(BB[i], bbMat, true)); }
+
+// sky: big strokes on a dome that travels with you, swept in rings round the sun
+{
+  const s = newSet(), zen = C('#86aede'), cloud = C('#fff3dc'), cs = C('#c9bcd6'), glow = C('#ffeaa6'), hz = new THREE.Color();
+  for (let i = 0; i < 2800; i++) {
+    N.set(rr(-1, 1), rr(-.2, 1), rr(-1, 1)); if (N.lengthSq() > 1 || N.lengthSq() < .01) { i--; continue; } N.normalize();
+    const sa = Math.max(0, N.dot(SUN)); hz.copy(HAZE_C).lerp(HAZE_W, Math.pow(sa, 3));
+    tc.copy(hz).lerp(zen, sstep(.03, .6, N.y));
+    const cl = fbm(N.x * 2.6 / (N.y + .35) + 3, N.z * 2.6 / (N.y + .35), 3); if (N.y > .08 && cl > .55) tc.lerp(cl > .63 ? cloud : cs, .85);
+    tc.lerp(glow, Math.pow(sa, 22)); if (sa > .9965) tc.set('#fffce6');
+    tc.offsetHSL(rr(-.01, .01), rr(-.04, .04), rr(-.025, .025));
+    U.crossVectors(N, SUN).normalize(); W.crossVectors(N, U);
+    s.pos.push(N.x * 400, N.y * 400, N.z * 400); const hl = rr(28, 46), hw = rr(9, 15); s.u.push(U.x * hl, U.y * hl, U.z * hl); s.v.push(W.x * hw, W.y * hw, W.z * hw); s.col.push(tc.r, tc.g, tc.b); s.misc.push(rnd(), 0);
+  }
+  const m = build(s, skyMat); m.frustumCulled = false; m.renderOrder = -10; scene.add(m);
+}
+// leaves coming down, in a box of air that follows you
+{
+  const s = newSet(); for (let i = 0; i < 700; i++) { const hl = rr(.1, .2); face(s, rr(0, 44), rr(0, 17), rr(0, 44), hl, hl * .5, rnd() * 6.283, pick(PAL.leaves[leafPal()], rr(.45, 1), 0), 1, 0); }
+  const m = build(s, fallMat, true); m.frustumCulled = false; scene.add(m);
+}
+
+// ---------- the walker: a green coat, a cream scarf, all strokes ----------
+const jc = (hexes) => tc.set(hexes[rnd() * hexes.length | 0]).offsetHSL(rr(-.01, .01), rr(-.04, .04), rr(-.03, .03));
+function cone(s, y0, r0, y1, r1, n, hl, hw, hexes, cx = 0, cz = 0) { // strokes running down a tapered tube
+  const dy = y1 - y0, dr = r0 - r1, m = Math.hypot(dy, dr);
+  for (let i = 0; i < n; i++) {
+    const th = rnd() * 6.283, t = rnd(), c = Math.cos(th), sn = Math.sin(th), r = lerp(r0, r1, t), tw = rr(-.3, .3);
+    N.set(c * dy / m, dr / m, sn * dy / m); U.set(c * dr / m, -dy / m, sn * dr / m); W.crossVectors(N, U); U.multiplyScalar(Math.cos(tw)).addScaledVector(W, Math.sin(tw));
+    surf(s, cx + c * r, lerp(y0, y1, t), cz + sn * r, N.x, N.y, N.z, U.x, U.y, U.z, hl * rr(.8, 1.25), hw * rr(.8, 1.25), jc(hexes));
+  }
+}
+function ball(s, cx, cy, cz, R, n, hl, hw, hexes, ok) {
+  for (let i = 0; i < n; i++) { N.set(rr(-1, 1), rr(-1, 1), rr(-1, 1)).normalize(); if (ok && !ok(N)) { i--; continue; } tangent(rnd() * 6.283); surf(s, cx + N.x * R, cy + N.y * R, cz + N.z * R, N.x, N.y, N.z, U.x, U.y, U.z, hl, hw, jc(hexes)); }
+}
+const COAT = ['#1f7a68', '#23846c', '#1a6c66', '#2a8a62'], CREAM = ['#f1e3c0', '#e8d6ae'], SKIN = ['#e6b48c'], HAIR = ['#8a3a1e', '#a04a22', '#74301c'], TROU = ['#3a2a3c', '#46324a'], BOOT = ['#5c3620', '#6c4226'];
+const walker = new THREE.Group(), body = new THREE.Group(); scene.add(walker); walker.add(body);
+const addPart = (parent, x, y, z, s, under, material = dynMat) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); const m = build(s, material); m.frustumCulled = false; g.add(m); if (under) { under.frustumCulled = false; g.add(under); } return g; };
+const under = (geo, hex, x = 0, y = 0, z = 0) => { geo.translate(x, y, z); return new THREE.Mesh(geo, solid(hex)); };
+{
+  const s = newSet();
+  cone(s, .5, .37, 1.42, .17, 120, .19, .07, COAT); cone(s, .46, .39, .62, .35, 26, .1, .06, COAT);          // coat and its hem
+  ball(s, 0, 1.4, 0, .17, 16, .09, .05, COAT, n => n.y > .1);                                                // shoulders
+  cone(s, 1.4, .185, 1.49, .15, 16, .05, .09, CREAM);                                                        // scarf round the neck
+  ball(s, 0, 1.6, 0, .125, 16, .06, .04, SKIN, n => n.z > .1 && n.y < .5);                                   // face (it walks toward +z)
+  ball(s, 0, 1.61, -.01, .135, 34, .08, .04, HAIR, n => n.z < .35 || n.y > .45); ball(s, 0, 1.71, -.1, .06, 9, .05, .03, HAIR);   // hair, in a bun
+  const u = new THREE.Group(); u.add(under(new THREE.CylinderGeometry(.16, .365, .96, 10), '#0e3a36', 0, .96, 0), under(new THREE.SphereGeometry(.118, 10, 8), '#a8704e', 0, 1.6, 0));
+  addPart(body, 0, 0, 0, s, u);
+}
+const limbs = [];
+for (const sx of [-1, 1]) {
+  const a = newSet(); cone(a, -.56, .05, 0, .065, 16, .12, .04, COAT); ball(a, 0, -.61, 0, .045, 5, .04, .03, SKIN);
+  const arm = addPart(body, sx * .215, 1.36, 0, a, under(new THREE.CylinderGeometry(.055, .045, .58, 6), '#0e3a36', 0, -.29, 0)); arm.rotation.z = sx * .13;
+  const l = newSet(); cone(l, -.6, .065, 0, .085, 16, .14, .045, TROU); cone(l, -.84, .075, -.56, .07, 10, .08, .045, BOOT);
+  N.set(0, 1, 0); for (let i = 0; i < 4; i++) surf(l, rr(-.02, .02), -.8, .1 + rr(-.02, .02), 0, 1, 0, 0, 0, 1, .11, .05, jc(BOOT));
+  const leg = addPart(walker, sx * .1, .86, 0, l, under(new THREE.CylinderGeometry(.075, .06, .84, 6), '#241a26', 0, -.42, 0));
+  limbs.push({ arm, leg, sx });
+}
+const tail = newSet();   // the loose end of the scarf, hanging down the back until you move
+for (let k = 0; k < 2; k++) for (let i = 0; i < 6; i++) surf(tail, (k - .5) * .09 + rr(-.01, .01), -.06 - i * .085, -.01 * k, 0, 0, -1, rr(-.15, .15), -1, 0, .07, .04, jc(CREAM));
+const scarf = addPart(body, .05, 1.44, -.16, tail);
+// a sword in one hand, on its own joint: a tapered steel stroke, twice, crossed, with a gold guard
+const sword = new THREE.Group(); sword.position.set(0, -.6, .02); sword.rotation.x = -1.05; limbs[1].arm.add(sword); limbs[1].arm.rotation.order = 'YXZ';
+{
+  const s = newSet();
+  surf(s, 0, 0, 0, 1, 0, 0, 0, -1, 0, .11, .026, tc.set('#5c3620'), .3); surf(s, 0, 0, 0, 0, 0, 1, 0, -1, 0, .11, .026, tc.set('#6c4226'), .3);
+  surf(s, 0, -.13, 0, 0, 0, 1, 1, 0, 0, .14, .03, tc.set('#e2b23e'), .4); surf(s, 0, -.13, 0, 0, 1, 0, 1, 0, 0, .14, .03, tc.set('#e2b23e'), .4);
+  surf(s, 0, -.65, 0, 1, 0, 0, 0, -1, 0, .5, .062, tc.set('#e3e9f2'), .5, 2); surf(s, 0, -.65, 0, 0, 0, 1, 0, -1, 0, .5, .04, tc.set('#c9d3e2'), .5, 2);
+  const m = build(s, dynMat); m.frustumCulled = false; sword.add(m);
+}
+// bears. Each has its own material, so each can stand in its own light and flash when it is hit
+const dyn = () => new THREE.ShaderMaterial({ uniforms: { ...UNI, uShade: { value: 0 }, uFlash: { value: 0 } }, vertexShader: fixVert, fragmentShader: FRAG, defines: { DYN: 1 }, side: THREE.DoubleSide, alphaToCoverage: true });
+const FUR = ['#5c3520', '#6e4329', '#4a2a1c', '#7c4c2c'], FURD = ['#3a2622', '#48302a', '#2e1e1e', '#553830'], TAN = ['#b98a5a', '#a87a4c'], bears = [];
+function makeBear(x, z, old) {
+  const m = dyn(), g = new THREE.Group(), fur = old ? FURD : FUR, part = (px, py, pz, s, u) => addPart(g, px, py, pz, s, u, m);
+  let s = newSet(); ball(s, 0, 0, 0, .6, 150, .2, .08, fur);
+  const bodyP = part(0, .98, 0, s, under(new THREE.SphereGeometry(.57, 10, 8), '#22140f')); bodyP.scale.set(1, .95, 1.55);
+  s = newSet(); ball(s, 0, 0, 0, .33, 60, .12, .055, fur); ball(s, 0, -.07, .3, .16, 16, .07, .04, TAN); ball(s, 0, -.03, .45, .05, 4, .04, .03, ['#1c1214']);
+  for (const e of [-1, 1]) { ball(s, e * .22, .27, -.02, .09, 8, .06, .04, fur); ball(s, e * .13, .08, .29, .025, 2, .025, .02, ['#140c0c']); }
+  const head = part(0, 1.08, 1.02, s, under(new THREE.SphereGeometry(.31, 10, 8), '#22140f')), legs = [];
+  for (const [lx, lz] of [[-.34, .55], [.34, .55], [-.34, -.6], [.34, -.6]]) { s = newSet(); cone(s, -.78, .15, 0, .2, 30, .16, .06, fur); legs.push(part(lx, .8, lz, s, under(new THREE.CylinderGeometry(.19, .14, .78, 6), '#22140f', 0, -.39, 0))); }
+  const sc = old ? 1.55 : 1.1; g.scale.setScalar(sc); scene.add(g);
+  bears.push({ g, m, head, legs, bodyP, sc, x, z, hx: x, hz: z, tx: x, tz: z, yaw: rnd() * 6.283, hp: old ? 14 : 5, max: old ? 14 : 5, stun: 0, sq: 0, old, state: 0, wait: rr(0, 4), going: 0, cd: 0, swipe: 0, hit: true, kx: 0, kz: 0, dead: 0, phase: 0, r: old ? 1.9 : 1.35 });
+}
+makeBear(5, 7, true);   // the old bear keeps the clearing
+for (let i = 0; i < 7; i++) { const a = 1.5 + i / 7 * 6.283 + rr(-.25, .25), r = rr(22, 54); makeBear(Math.cos(a) * r, Math.sin(a) * r, false); }
+// things to find: red mushrooms mend a heart, golden acorns are for keeping
+const items = [];
+{
+  const mush = newSet(), acorn = newSet();
+  cone(mush, 0, .07, .3, .05, 14, .1, .035, CREAM); ball(mush, 0, .28, 0, .2, 44, .09, .045, ['#c8262c', '#d83a2e', '#b01c2a'], n => n.y > -.1); ball(mush, 0, .28, 0, .212, 7, .03, .025, ['#fff2d8'], n => n.y > .25);
+  ball(acorn, 0, 0, 0, .13, 34, .07, .035, ['#f4c430', '#ffd84a', '#e0a820']); ball(acorn, 0, .04, 0, .142, 18, .06, .03, ['#7a4a22', '#8c5a2c'], n => n.y > .35); surf(acorn, 0, .2, 0, 1, 0, 0, 0, 1, 0, .05, .015, tc.set('#5c3620'));
+  const geo = [build(mush, dynMat).geometry, build(acorn, dynMat).geometry];
+  const put = (kind, x, z) => { const m = new THREE.Mesh(geo[kind], dyn()); m.frustumCulled = false; m.material.uniforms.uShade.value = lightAt(x, z) > .5 ? 0 : .6; m.scale.setScalar(kind ? 1.5 : 1.6); const y = ground(x, z) + (kind ? .8 : 0); m.position.set(x, y, z); scene.add(m); items.push({ m, kind, x, z, y, back: 0 }); };
+  for (let i = 0; i < 34; i++) {
+    const kind = i < 14 ? 0 : 1; let x, z;
+    if (kind && i < 24) { const p = pathPt(rnd() * 6.283); x = p[0] + rr(-4, 4); z = p[1] + rr(-4, 4); } else if (i > 30) { x = rr(-7, 7); z = rr(-7, 7); } else { const r = rr(9, 58), a = rnd() * 6.283; x = Math.cos(a) * r; z = Math.sin(a) * r; }
+    if (near(x, z, 1.4) || (!kind && pathAt(x, z) > .5)) { i--; continue; } put(kind, x, z);
+  }
+}
+const ACORNS = items.filter(i => i.kind).length;
+// its shadow: a few dark strokes laid out along the fall of the light
+const shadowG = new THREE.Group(); scene.add(shadowG);
+{
+  const s = newSet();
+  for (let i = 0; i < 22; i++) { const d = rr(0, 3.7), w = .32 * (1 - d / 5) * (d > 3 ? .7 : 1); tc.copy(PAL.shade[rnd() < .6 ? 0 : 1]); surf(s, SDX * d + SDZ * rr(-w, w) * .6, 0, SDZ * d - SDX * rr(-w, w) * .6, 0, 1, 0, SDX, 0, SDZ, rr(.3, .5), w * rr(.5, .8), tc, rr(.7, 1)); }
+  const m = build(s, fixMat); m.frustumCulled = false; shadowG.add(m);
+}
+
+// ---------- walking ----------
+const S = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, air: false, phase: 0, speed: 0, th: .4, shade: 0 };
+{ const p = pathPt(S.th); S.x = p[0]; S.z = p[1]; const n = pathPt(S.th + .05); S.yaw = Math.atan2(n[0] - p[0], n[1] - p[1]); }
+let walking = false, T = 0, camYaw = S.yaw, camPitch = -.1;
+if (q.has('at')) { const a = q.get('at').split(',').map(Number); S.x = a[0] || 0; S.z = a[1] || 0; S.yaw = camYaw = a[2] || 0; camPitch = a[3] || -.1; walking = true; document.getElementById('hud').classList.add('walking'); }   // ?at=x,z,yaw,pitch: stand somewhere in particular
+const keys = {}, wrap = a => { while (a > Math.PI) a -= 6.2832; while (a < -Math.PI) a += 6.2832; return a; };
+function pushOut(o, pad) { // trunks and boulders are solid
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const l = cells.get(ck(o.x + i * 4, o.z + j * 4)); if (l) for (const t of l) { const dx = o.x - t.x, dz = o.z - t.z, d = Math.hypot(dx, dz), m = t.r * 1.4 + pad; if (d < m && d > 1e-4) { o.x += dx / d * (m - d); o.z += dz / d * (m - d); } } }
+  for (const t of rocks) { const dx = o.x - t.x, dz = o.z - t.z, d = Math.hypot(dx, dz), m = t.r + pad; if (d < m && d > 1e-4) { o.x += dx / d * (m - d); o.z += dz / d * (m - d); } }
+}
+function walk(dt) {
+  let wx = 0, wz = 0, run = false;
+  if (!walking) { // until you take over, it follows the footpath
+    let p = pathPt(S.th); if (Math.hypot(p[0] - S.x, p[1] - S.z) < 2.5) { S.th += .02; p = pathPt(S.th); }
+    const d = Math.hypot(p[0] - S.x, p[1] - S.z); wx = (p[0] - S.x) / d * 1.5; wz = (p[1] - S.z) / d * 1.5;
+  } else {
+    const f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0), r = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+    run = !!(keys.ShiftLeft || keys.ShiftRight);
+    wx = Math.sin(camYaw) * f - Math.cos(camYaw) * r; wz = Math.cos(camYaw) * f + Math.sin(camYaw) * r;
+    const m = Math.hypot(wx, wz); if (m > 0) { const v = (run ? 6.2 : 2.5) / m; wx *= v; wz *= v; }
+    if (P.combo) { wx *= .3; wz *= .3; }   // planted while swinging
+    if (P.dead > 0) wx = wz = 0; else if (P.dodge > 0) { P.dodge -= dt; wx = P.dx * 11; wz = P.dz * 11; } else if (keys.Space && !S.air && !P.combo) { S.vy = 5.2; S.air = true; }
+  }
+  const k = 1 - Math.exp(-(P.dodge > 0 ? 30 : S.air ? 2 : 9) * dt); S.vx = lerp(S.vx, wx, k); S.vz = lerp(S.vz, wz, k);
+  S.x += S.vx * dt; S.z += S.vz * dt; pushOut(S, .3);
+  for (const b of bears) if (b.state < 2) { const dx = S.x - b.x, dz = S.z - b.z, d = Math.hypot(dx, dz), m = b.r * .8; if (d < m && d > 1e-4) { S.x += dx / d * (m - d); S.z += dz / d * (m - d); } }   // a bear is solid too
+  const rad = Math.hypot(S.x, S.z); if (rad > WALK) { S.x *= WALK / rad; S.z *= WALK / rad; }   // the wood goes on; you turn back here
+  const g = ground(S.x, S.z);
+  if (S.air) { S.vy -= 14 * dt; S.y += S.vy * dt; if (S.y <= g) { S.y = g; S.air = false; S.vy = 0; } } else S.y = g;
+  S.speed = Math.hypot(S.vx, S.vz);
+  if (S.speed > .3 && !P.combo && P.inv < .5 && !(P.dodge > 0 && P.hop)) S.yaw += wrap(Math.atan2(S.vx, S.vz) - S.yaw) * (1 - Math.exp(-10 * dt));
+  S.phase += S.speed * dt * (S.speed > 4 ? 1.55 : 2.5);
+  const st = Math.floor(S.phase / Math.PI); if (st !== S.st) { S.st = st; if (walking && !S.air && S.speed > 1) sfx.step(); }
+  const amp = clamp(S.speed / 2.5, 0, 1) * (S.speed > 4 ? 1.0 : .6), sw = Math.sin(S.phase), air = S.air ? 1 : 0;
+  walker.position.set(S.x, S.y, S.z); walker.rotation.y = S.yaw;
+  body.position.y = Math.abs(Math.cos(S.phase)) * .05 * amp + Math.sin(T * 1.6) * .006; body.rotation.x = .05 + S.speed * .028; body.rotation.z = sw * .03 * amp;
+  for (const l of limbs) { l.leg.rotation.x = lerp(-sw * l.sx * amp * .75, l.sx * .5 - .2, air); l.arm.rotation.x = lerp(sw * l.sx * amp * .7, -1.1, air * .7); }
+  scarf.rotation.x = -(.12 + clamp(S.speed * .19, 0, 1.25) + Math.sin(T * 5.3) * .07 * (.3 + amp) + air * .3); scarf.rotation.z = Math.sin(T * 3.1) * .12 * (.3 + amp);
+  if (P.dodge > 0) { body.rotation.x = .8; body.position.y -= .22; }
+  swordStep(dt);
+  S.shade = lerp(S.shade, lightAt(S.x, S.z) > .5 ? 0 : 1, 1 - Math.exp(-8 * dt)); UNI.uShade.value = S.shade;
+  shadowG.position.set(S.x + SDX * (S.y - g) * SL, g + .05, S.z + SDZ * (S.y - g) * SL); shadowG.visible = S.shade < .5;
+}
+
+// ---------- sword, bears, finds ----------
+const P = { hp: 5, max: 5, acorns: 0, bears: 0, combo: 0, atk: 0, acd: 0, queued: false, hitDone: true, last: 0, chain: 0, tr: false, inv: 0, dead: 0, dodge: 0, dcd: 0, hop: false, dx: 0, dz: 1, ax: 0, ay: 0, sx: -1.05, lean: 0, focus: null };
+const $ = id => document.getElementById(id), flashEl = $('flash'); let msgT = 0;
+function say(t) { $('msg').textContent = t; $('msg').style.opacity = 1; msgT = 3; }
+function hudDraw() { $('hp').innerHTML = '♥'.repeat(P.hp) + '<i>' + '♥'.repeat(P.max - P.hp) + '</i>'; $('ac').textContent = `acorns ${P.acorns} / ${ACORNS}`; $('br').textContent = P.bears ? `bears felled ${P.bears}` : ''; }
+hudDraw();
+// sound: all of it made here from noise and a few oscillators
+let AC = null, muted = false, noiseBuf = null;
+function audio() { if (AC || THUMB) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); const n = AC.sampleRate; noiseBuf = AC.createBuffer(1, n, n); const d = noiseBuf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; } catch (e) { AC = null; } }
+function env(g, t, a, peak, dur) { g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + dur); }
+function noise(f0, f1, dur, vol, q = 1, type = 'bandpass') {
+  if (!AC || muted) return; const t = AC.currentTime, s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(); s.buffer = noiseBuf; s.loop = true;
+  f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur); env(g, t, dur * .25, vol, dur); s.connect(f); f.connect(g); g.connect(AC.destination); s.start(t, Math.random() * .9); s.stop(t + dur + .05);
+}
+function tone(type, f0, f1, dur, vol, lp = 0, delay = 0) {
+  if (!AC || muted) return; const t = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur); env(g, t, .008, vol, dur);
+  if (lp) { const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; o.connect(f); f.connect(g); } else o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + .05);
+}
+const sfx = {
+  swing: n => n === 3 ? noise(300, 3200, .3, .24, 1) : noise(500 + n * 220, 2600 + n * 500, .17, .17, 1.3),
+  hit: () => { tone('sine', 175, 45, .17, .55); noise(1900, 500, .09, .28, .7); },
+  heavy: () => { tone('sine', 125, 30, .34, .8); noise(1300, 220, .24, .4, .6); },
+  thud: () => { tone('sine', 110, 40, .2, .35); noise(900, 300, .15, .14, .6); },
+  growl: old => { tone('sawtooth', old ? 62 : 84, old ? 44 : 58, .6, .16, 420); noise(260, 160, .55, .12, 2); },
+  hurt: () => { tone('square', 250, 85, .24, .13, 900); noise(900, 200, .16, .22); },
+  down: () => tone('sawtooth', 115, 34, .95, .18, 420),
+  dodge: () => noise(420, 1500, .22, .12, .8),
+  step: () => noise(2600, 1400, .07, .028, .5, 'highpass'),
+  acorn: () => { tone('sine', 880, 880, .25, .12); tone('sine', 1320, 1320, .4, .1, 0, .09); },
+  heal: () => tone('triangle', 520, 790, .4, .15),
+};
+// paint thrown off by a blow, and the sweep the blade leaves in the air: two small pools of strokes moved by hand
+const SPN = 140, sparks = { n: 0, vel: new Float32Array(SPN * 3), life: new Float32Array(SPN), size: new Float32Array(SPN * 2), spin: new Float32Array(SPN) };
+const TRN = 56, trail = { n: 0, life: new Float32Array(TRN), v0: new Float32Array(TRN * 3) };
+let sparkGeo, trailGeo;
+{
+  const a = newSet(), b = newSet(); for (let i = 0; i < SPN; i++) face(a, 0, -99, 0, 0, 0, 0, tc.set('#fff'), 0, 0); for (let i = 0; i < TRN; i++) surf(b, 0, -99, 0, 0, 1, 0, 1, 0, 0, 0, 0, tc.set('#fff'));
+  const ma = build(a, bbMat, true), mb = build(b, fixMat); ma.frustumCulled = mb.frustumCulled = false; scene.add(ma, mb); sparkGeo = ma.geometry.attributes; trailGeo = mb.geometry.attributes;
+}
+function burst(x, y, z, n, cols, speed, shape, dirx = 0, dirz = 0) {
+  const { iPos, iU, iCol, iMisc } = sparkGeo;
+  for (let k = 0; k < n; k++) {
+    const i = sparks.n++ % SPN, a = rnd() * 6.283, v = speed * rr(.35, 1), hl = shape ? rr(.1, .2) : rr(.1, .24);
+    iPos.setXYZ(i, x + rr(-.2, .2), y + rr(-.2, .2), z + rr(-.2, .2)); sparks.vel.set([Math.cos(a) * v + dirx * speed * .7, rr(.3, 1) * speed * .8, Math.sin(a) * v + dirz * speed * .7], i * 3);
+    sparks.life[i] = rr(.45, .9); sparks.size[i * 2] = hl; sparks.size[i * 2 + 1] = hl * (shape ? .5 : rr(.3, .5)); sparks.spin[i] = rr(-9, 9);
+    const c = cols[rnd() * cols.length | 0]; iCol.setXYZ(i, c.r, c.g, c.b); iU.setXYZ(i, hl, hl * .4, rnd() * 6.283); iMisc.setXYZ(i, rnd(), shape, 0);
+  }
+  iCol.needsUpdate = iMisc.needsUpdate = true;
+}
+function fxStep(dt) {
+  const { iPos, iU } = sparkGeo, p = iPos.array, u = iU.array;
+  for (let i = 0; i < SPN; i++) {
+    if (sparks.life[i] <= 0) continue; const j = i * 3; sparks.life[i] -= dt;
+    sparks.vel[j + 1] -= 12 * dt; p[j] += sparks.vel[j] * dt; p[j + 1] += sparks.vel[j + 1] * dt; p[j + 2] += sparks.vel[j + 2] * dt;
+    const g = ground(p[j], p[j + 2]) + .04; if (p[j + 1] < g) { p[j + 1] = g; sparks.vel[j] = sparks.vel[j + 1] = sparks.vel[j + 2] = 0; sparks.spin[i] = 0; }
+    const f = clamp(sparks.life[i] / .3, 0, 1); u[j] = sparks.size[i * 2] * f; u[j + 1] = sparks.size[i * 2 + 1] * f; u[j + 2] += sparks.spin[i] * dt;
+  }
+  iPos.needsUpdate = iU.needsUpdate = true;
+  const v = trailGeo.iV.array;
+  for (let i = 0; i < TRN; i++) { if (trail.life[i] <= 0) continue; trail.life[i] -= dt; const f = clamp(trail.life[i] / .2, 0, 1), j = i * 3; v[j] = trail.v0[j] * f; v[j + 1] = trail.v0[j + 1] * f; v[j + 2] = trail.v0[j + 2] * f; }
+  trailGeo.iV.needsUpdate = true;
+}
+const HITC = ['#fff4d2', '#ffd070', '#f25a3c', '#c2242e', '#7c4c2c'].map(C), LEAFC = PAL.leaves.flat(), TRC = [C('#fff4d2'), C('#fff4d2'), C('#fff4d2'), C('#ffcc66')];
+let hitStop = 0, shake = 0;
+
+// the sword: three swings in a row. Click during a swing and the next one is queued
+const SW = [null, { dur: .36, a: 1.7, b: -1.25, hit: .34 }, { dur: .36, a: -1.35, b: 1.65, hit: .34 }, { dur: .58, hit: .47 }];
+function startSwing(n) {
+  P.combo = n; P.atk = 0; P.hitDone = false; P.queued = false; P.tr = false;
+  let best = 5, t = null; for (const b of bears) { const d = Math.hypot(b.x - S.x, b.z - S.z) - b.r; if (b.state < 2 && d < best) { best = d; t = b; } }
+  S.yaw = t ? Math.atan2(t.x - S.x, t.z - S.z) : camYaw;                 // toward the nearest bear in reach, or where you are looking
+  const f = n === 3 ? 7 : 4.5; S.vx += Math.sin(S.yaw) * f; S.vz += Math.cos(S.yaw) * f;   // every swing steps in
+  if (n === 3 && !S.air) { S.vy = 3.6; S.air = true; }                    // the third is a leaping chop
+  sfx.swing(n);
+}
+function attack() {
+  if (!walking || P.dead > 0 || P.dodge > 0) return;
+  if (P.combo) { P.queued = true; return; } if (P.acd > 0) return;
+  startSwing(P.chain > 0 ? P.last % 3 + 1 : 1);
+}
+function dodge() {
+  if (!walking || P.dead > 0 || P.dodge > 0 || P.dcd > 0) return;
+  const f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0), r = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+  let dx = Math.sin(camYaw) * f - Math.cos(camYaw) * r, dz = Math.cos(camYaw) * f + Math.sin(camYaw) * r; P.hop = !f && !r; if (P.hop) { dx = -Math.sin(S.yaw); dz = -Math.cos(S.yaw); }   // no direction held: a hop straight back
+  const m = Math.hypot(dx, dz); P.dx = dx / m; P.dz = dz / m; P.dodge = .3; P.dcd = .7; P.inv = Math.max(P.inv, .42); P.combo = 0; P.last = 0;
+  burst(S.x, S.y + .2, S.z, 9, LEAFC, 3, 1); sfx.dodge();
+}
+const tipA = new THREE.Vector3(), tipB = new THREE.Vector3(), prevA = new THREE.Vector3(), prevB = new THREE.Vector3();
+function swordStep(dt) {
+  const arm = limbs[1].arm; let ax = arm.rotation.x, ay = 0, sx = -1.05, lean = 0, rate = 14, cut = false;
+  if (P.combo) {
+    const n = P.combo, w = SW[n]; P.atk += dt; const t = P.atk / w.dur; rate = 45;
+    if (n < 3) { const e = sstep(.16, .5, t); ay = lerp(w.a, w.b, e); ax = -1.45 + Math.sin(e * 3.14) * .12; sx = -.3; cut = e > .02 && e < .98; }
+    else { const e = sstep(.3, .52, t); ax = lerp(-3.05, -.7, e); sx = lerp(-.15, -.75, e); lean = .5 * e * (1 - sstep(.75, 1, t)); cut = e > .02 && e < .98; }
+    if (!P.hitDone && t >= w.hit) {
+      P.hitDone = true; const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw); let any = false;
+      for (const b of bears) { const dx = b.x - S.x, dz = b.z - S.z, d = Math.hypot(dx, dz) || 1; if (b.state < 2 && d < (n === 3 ? 2.1 : 1.7) + b.r && (dx * fx + dz * fz) / d > (n === 3 ? .3 : .1)) { strike(b, dx / d, dz / d, n); any = true; } }
+      if (n === 3) { burst(S.x + fx * 1.5, S.y + .15, S.z + fz * 1.5, 14, LEAFC, 4.5, 1); if (!any) { shake = Math.max(shake, .1); sfx.thud(); } }   // the chop kicks up leaves either way
+    }
+    if (t >= .6 && P.queued && n < 3) startSwing(n + 1);
+    else if (t >= 1) { P.last = n === 3 ? 0 : n; P.chain = .45; if (n === 3) P.acd = .28; P.combo = 0; }
+  }
+  const k = 1 - Math.exp(-rate * dt); P.ax = lerp(P.ax, ax, k); P.ay = lerp(P.ay, ay, k); P.sx = lerp(P.sx, sx, k); P.lean = lerp(P.lean, lean, k);
+  arm.rotation.x = P.ax; arm.rotation.y = P.ay; sword.rotation.x = P.sx; body.rotation.y = P.ay * .4; body.rotation.x += P.lean;
+  if (cut) { // lay a stroke of pale paint between where the blade was and where it is
+    walker.updateMatrixWorld(true); sword.localToWorld(tipA.set(0, -.2, 0)); sword.localToWorld(tipB.set(0, -1.2, 0));
+    if (P.tr) {
+      const i = trail.n++ % TRN, { iPos, iU, iCol } = trailGeo, ux = (tipA.x + tipB.x - prevA.x - prevB.x) * .32, uy = (tipA.y + tipB.y - prevA.y - prevB.y) * .32, uz = (tipA.z + tipB.z - prevA.z - prevB.z) * .32;
+      iPos.setXYZ(i, (tipA.x + tipB.x + prevA.x + prevB.x) * .25, (tipA.y + tipB.y + prevA.y + prevB.y) * .25, (tipA.z + tipB.z + prevA.z + prevB.z) * .25); iU.setXYZ(i, ux, uy, uz);
+      trail.v0.set([(tipB.x + prevB.x - tipA.x - prevA.x) * .25, (tipB.y + prevB.y - tipA.y - prevA.y) * .25, (tipB.z + prevB.z - tipA.z - prevA.z) * .25], i * 3); trail.life[i] = .2;
+      const c = TRC[P.combo]; iCol.setXYZ(i, c.r, c.g, c.b); iPos.needsUpdate = iU.needsUpdate = iCol.needsUpdate = true;
+    }
+    prevA.copy(tipA); prevB.copy(tipB); P.tr = true;
+  }
+}
+function strike(b, nx, nz, n) {
+  const heavy = n === 3; b.hp -= heavy ? 2 : 1; b.m.uniforms.uFlash.value = 1; b.sq = 1; b.kx = nx * (heavy ? 11 : 5); b.kz = nz * (heavy ? 11 : 5); b.state = 1; P.focus = b;
+  if (!b.old) { b.stun = heavy ? .75 : .4; if (b.swipe > .3) { b.swipe = 0; b.hit = true; } }   // a hit staggers a bear out of its swipe
+  else if (heavy && b.swipe <= 0) b.stun = .6;                                                   // the old bear only gives way to the chop, and never once it has reared: dodge that
+  burst(b.x - nx * b.r * .7, ground(b.x, b.z) + 1.1 * b.sc, b.z - nz * b.r * .7, heavy ? 22 : 10, HITC, heavy ? 7 : 5, 0, nx, nz);
+  hitStop = Math.max(hitStop, heavy ? .14 : .065); shake = Math.max(shake, heavy ? .34 : .13); heavy ? sfx.heavy() : sfx.hit();
+  if (b.hp <= 0) { b.state = 2; b.dead = 0; P.bears++; hitStop = .2; sfx.down(); say(b.old ? 'the old bear is down' : 'a bear is down'); hudDraw(); }
+}
+function hurt(nx, nz) {
+  if (P.inv > 0 || P.dead > 0) return; P.hp--; P.inv = .9; P.combo = 0; P.last = 0; S.vx += nx * 9; S.vz += nz * 9; flashEl.style.opacity = 1; UNI.uFlash.value = .8;
+  hitStop = .09; shake = .42; sfx.hurt(); burst(S.x, S.y + 1.1, S.z, 8, HITC, 4, 0, nx, nz);
+  if (P.hp <= 0) { P.dead = 2.6; say('you fall among the leaves'); } hudDraw();
+}
+const pv = new THREE.Vector3();
+function fight(dt) {
+  P.acd -= dt; P.inv -= dt; P.dcd -= dt; P.chain -= dt; fxStep(dt); UNI.uFlash.value *= Math.exp(-9 * dt); flashEl.style.opacity = Math.max(0, flashEl.style.opacity - dt * 2.2);
+  if (msgT > 0 && (msgT -= dt) <= 0) $('msg').style.opacity = 0;
+  if (P.dead > 0) { // down, then back on the path with every heart
+    P.dead -= dt; walker.rotation.x = -Math.min(1.45, (2.6 - P.dead) * 5);
+    if (P.dead <= 0) { const p = pathPt(.4); S.x = p[0]; S.z = p[1]; S.vx = S.vz = 0; P.hp = P.max; P.inv = 2; for (const b of bears) if (b.state === 1) b.state = 0; say('you wake on the path'); hudDraw(); }
+  } else walker.rotation.x = 0;
+  const can = walking && P.dead <= 0;
+  for (const b of bears) {
+    const g0 = ground(b.x, b.z); b.m.uniforms.uFlash.value *= Math.exp(-9 * dt);
+    if (b.state === 2) { // it rolls over, sinks into the paint, and another comes back later
+      b.dead += dt; b.g.rotation.z = Math.min(1.5, b.dead * 4); const k = 1 - sstep(2.2, 3.4, b.dead); b.g.scale.setScalar(b.sc * Math.max(k, .001)); b.g.visible = k > 0;
+      if (b.dead > 45 && Math.hypot(b.hx - S.x, b.hz - S.z) > 25) { b.state = 0; b.hp = b.max; b.x = b.hx; b.z = b.hz; b.g.rotation.z = 0; b.g.scale.setScalar(b.sc); b.g.visible = true; }
+      continue;
+    }
+    const dx = S.x - b.x, dz = S.z - b.z, d = Math.hypot(dx, dz) || 1; let sp = 0, mx = 0, mz = 0; b.cd -= dt;
+    if (b.state === 0 && can && d < (b.old ? 10 : 13)) b.state = 1;
+    if (b.state === 1 && (!can || d > 28)) { b.state = 0; b.tx = b.hx; b.tz = b.hz; b.wait = 0; b.going = 0; }
+    if (b.state === 1) {
+      if (d > b.r + .7) { sp = b.old ? 3.2 : 3.8; mx = dx / d; mz = dz / d; } else if (b.cd <= 0 && b.stun <= 0) { b.swipe = .85; b.cd = 2; b.hit = false; sfx.growl(b.old); }   // it rears up first: that is your warning
+    } else if (b.wait > 0) b.wait -= dt;
+    else { const wx = b.tx - b.x, wz = b.tz - b.z, wd = Math.hypot(wx, wz); b.going += dt; if (wd < .7 || b.going > 14) { b.wait = rr(1, 6); b.going = 0; const a = rnd() * 6.283, r = rr(3, 11); b.tx = b.hx + Math.cos(a) * r; b.tz = b.hz + Math.sin(a) * r; } else { sp = 1; mx = wx / wd; mz = wz / wd; } }
+    let paw = 0;
+    if (b.stun > 0) { b.stun -= dt; sp = 0; }
+    if (b.swipe > 0) { b.swipe -= dt; paw = b.swipe > .3 ? sstep(.85, .36, b.swipe) : b.swipe / .3; sp = 0; if (!b.hit && b.swipe < .3) { b.hit = true; b.kx += dx / d * 5; b.kz += dz / d * 5; if (d < b.r + 1.5) hurt(dx / d, dz / d); } }
+    b.x += (mx * sp + b.kx) * dt; b.z += (mz * sp + b.kz) * dt; b.kx *= Math.exp(-6 * dt); b.kz *= Math.exp(-6 * dt); pushOut(b, b.r * .4);
+    const rad = Math.hypot(b.x, b.z); if (rad > 68) { b.x *= 68 / rad; b.z *= 68 / rad; }
+    const ty = sp > 0 ? Math.atan2(mx, mz) : b.state === 1 ? Math.atan2(dx, dz) : b.yaw; b.yaw += wrap(ty - b.yaw) * (1 - Math.exp(-6 * dt));
+    b.phase += sp * dt * 2.3; const amp = Math.min(1, sp / 1.5) * .55;
+    b.legs.forEach((l, i) => { l.rotation.x = Math.sin(b.phase + (i === 0 || i === 3 ? 0 : 3.14)) * amp - (i < 2 ? paw * 1.3 : 0); });
+    b.bodyP.position.y = .98 + Math.sin(b.phase * 2) * .03 * amp; b.bodyP.rotation.x = -paw * .35; b.head.position.y = 1.08 + paw * .3; b.head.rotation.x = -paw * .4 + Math.sin(T * .7 + b.hx) * .08;
+    b.g.position.set(b.x, g0, b.z); b.g.rotation.y = b.yaw; b.sq *= Math.exp(-11 * dt); b.g.scale.set(b.sc * (1 + .2 * b.sq), b.sc * (1 - .24 * b.sq), b.sc * (1 + .2 * b.sq));
+    b.m.uniforms.uShade.value = lerp(b.m.uniforms.uShade.value, lightAt(b.x, b.z) > .5 ? 0 : 1, 1 - Math.exp(-6 * dt));
+  }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it.m.visible) { if (!it.kind && (it.back -= dt) <= 0) it.m.visible = true; continue; }
+    if (it.kind) { it.m.position.y = it.y + Math.sin(T * 2 + i) * .09; it.m.rotation.y = T * 1.4 + i; }
+    if (can && Math.hypot(it.x - S.x, it.z - S.z) < 1.1 && S.y - ground(S.x, S.z) < 1.2) {
+      if (it.kind) { it.m.visible = false; P.acorns++; sfx.acorn(); burst(it.x, it.m.position.y, it.z, 8, [C('#ffd84a'), C('#fff4d2')], 3, 0); say(P.acorns === ACORNS ? 'every golden acorn in the wood is yours' : 'a golden acorn'); hudDraw(); }
+      else if (P.hp < P.max) { it.m.visible = false; it.back = 50; P.hp++; sfx.heal(); say('a red mushroom: one heart mended'); hudDraw(); }
+    }
+  }
+  const f = P.focus, bar = $('bar'); let show = false;   // a small bar over the bear you are fighting
+  if (f && f.state < 2 && f.hp < f.max) { pv.set(f.x, ground(f.x, f.z) + 1.85 * f.sc, f.z).project(camera); if (pv.z < 1) { show = true; bar.style.transform = `translate(${(pv.x * .5 + .5) * innerWidth - 42}px,${(-pv.y * .5 + .5) * innerHeight}px)`; bar.firstChild.style.width = f.hp / f.max * 100 + '%'; } }
+  bar.style.display = show ? 'block' : 'none';
+}
+
+// ---------- input ----------
+let PR = Math.min(devicePixelRatio || 1, 1.5);
+function resize() { const w = innerWidth, h = innerHeight; renderer.setPixelRatio(PR); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const hud = document.getElementById('hud'); if (THUMB) hud.style.display = 'none';
+function start() {
+  if (THUMB) return;
+  audio(); if (!walking) { walking = true; hud.classList.add('walking'); }
+  if (canvas.requestPointerLock) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+}
+canvas.addEventListener('click', start);
+addEventListener('mousemove', e => { if (walking && document.pointerLockElement === canvas) { camYaw -= e.movementX * .0024; camPitch = clamp(camPitch - e.movementY * .0024, -1.1, .5); } });
+let drag = null; // no pointer lock (touch, or a sandboxed frame): drag to look
+let moved = 0;
+canvas.addEventListener('pointerdown', e => { drag = [e.clientX, e.clientY]; moved = 0; if (e.button === 2) dodge(); else if (document.pointerLockElement === canvas && e.button === 0) attack(); });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('pointerup', e => { if (drag && moved < 6 && document.pointerLockElement !== canvas && e.button === 0) attack(); drag = null; });   // without pointer lock, a tap that is not a drag swings
+addEventListener('pointermove', e => { if (walking && drag && document.pointerLockElement !== canvas) { moved += Math.abs(e.clientX - drag[0]) + Math.abs(e.clientY - drag[1]); camYaw -= (e.clientX - drag[0]) * .005; camPitch = clamp(camPitch - (e.clientY - drag[1]) * .005, -1.1, .5); drag = [e.clientX, e.clientY]; } });
+addEventListener('keydown', e => { keys[e.code] = true; if (!e.repeat) { if (e.code === 'KeyF' || e.code === 'KeyJ') { audio(); attack(); } else if (e.code === 'KeyE' || e.code === 'KeyQ') dodge(); else if (e.code === 'KeyM') muted = !muted; } if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); });
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+// ---------- frame ----------
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), look = new THREE.Vector3();
+let camInit = false, last = performance.now(), slow = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = clamp((now - last) / 1000, .001, .05); last = now; T += dt; UNI.uTime.value = T;
+  if (dt > .03) { if (++slow > 40 && PR > .75) { PR = Math.max(.75, PR - .25); slow = 0; resize(); } } else slow = Math.max(0, slow - 1);
+  if (hitStop > 0) hitStop -= dt; const gdt = hitStop > 0 ? dt * .03 : dt;   // a blow that lands stops the world for a moment
+  walk(gdt); fight(gdt);
+  if (!walking) { camYaw += wrap(S.yaw + .55 * Math.sin(T * .11) - camYaw) * (1 - Math.exp(-1.2 * dt)); camPitch = -.1 + .05 * Math.sin(T * .07); }
+  v1.set(Math.sin(camYaw) * Math.cos(camPitch), Math.sin(camPitch), Math.cos(camYaw) * Math.cos(camPitch));   // the mouse turns the camera round the walker
+  look.set(S.x, S.y + 1.35, S.z); v2.copy(look).addScaledVector(v1, -5.6); v2.y += .35;
+  pushOut(v2, .35); const cg = ground(v2.x, v2.z) + .4; if (v2.y < cg) v2.y = cg;
+  if (!camInit) { camPos.copy(v2); camLook.copy(look); camInit = true; }
+  camPos.lerp(v2, 1 - Math.exp(-14 * dt)); camLook.lerp(look.addScaledVector(v1, 2.5), 1 - Math.exp(-14 * dt));
+  camera.position.copy(camPos); camera.lookAt(camLook);
+  if (shake > .002) { camera.position.x += (Math.random() - .5) * shake; camera.position.y += (Math.random() - .5) * shake; camera.position.z += (Math.random() - .5) * shake; camera.rotation.z += (Math.random() - .5) * shake * .12; shake *= Math.exp(-9 * dt); }
+  camera.updateMatrixWorld();
+  UNI.uCenter.value.set(S.x, ground(S.x, S.z), S.z);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
+</script>
+</html>

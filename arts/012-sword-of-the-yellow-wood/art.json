@@ -1,0 +1,35 @@
+{
+  "title": "sword of the yellow wood",
+  "category": "game-scenes",
+  "date": "2026-11-15",
+  "summary": "A small action RPG in an autumn wood painted in oils: a sword, a three-hit combo, eight bears. Every trunk, leaf, bear and shadow is a brush stroke fixed in the world, so the paint holds still while you move.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "small action rpg scene, three.js, brush strokes as instanced quads, webaudio, single file",
+  "tags": [
+    "game scene",
+    "3d",
+    "action rpg",
+    "walking",
+    "free roam",
+    "oil painting",
+    "brush strokes",
+    "autumn",
+    "forest",
+    "bears",
+    "shaders",
+    "procedural"
+  ],
+  "specs": {
+    "controls": "click, mouse to look, WASD to walk, shift to run, space to jump, click or F to swing (three in a row), right click or E to dodge, M sound",
+    "libraries": "three.js 0.170",
+    "assets": "none, all made in code",
+    "strokes": "about 335,000, each one flat quad in one of three paints",
+    "post-processing": "none: the picture is never filtered",
+    "shadows": "drawn once on a hidden 2d canvas, then read by every stroke on the ground",
+    "bears": "eight, one of them old and big, in the clearing",
+    "to find": "14 red mushrooms (a heart each) and 20 golden acorns",
+    "inspired by": "\"a walkable oil-painting world\" by @rewind02 on X; the wood, the walker and the code are new",
+    "sound": "made in the page from noise and a few oscillators"
+  }
+}
