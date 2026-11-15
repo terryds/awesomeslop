@@ -431,9 +431,8 @@ const head = new THREE.Group(); head.scale.setScalar(1.5); dragon.add(head);
   for (const s of [-1, 1]) {
     add(sph, dk, s * .13, .24, 1.72, 0, 0, 0, [.06, .05, .08]);                               // nostril
     add(sph, red, s * .34, .34, .3, 0, 0, 0, [.2, .14, .3]);                                 // brow
-    add(new THREE.ConeGeometry(.16, 1.5, 7), bone, s * .32, .6, -.55, -1.0, 0, s * -.22);      // horns
-    add(new THREE.ConeGeometry(.1, .9, 6), bone, s * .3, 1.0, -1.25, -1.5, 0, s * -.2);
-    add(new THREE.ConeGeometry(.09, .7, 5), bone, s * .5, .1, -.4, -1.35, 0, s * -.75);
+    add(new THREE.ConeGeometry(.15, 1.0, 7), bone, s * .34, .8, -.18, -.15, 0, s * -.3);       // horns: up and a little back, clear of the rider
+    add(new THREE.ConeGeometry(.08, .45, 5), bone, s * .52, .1, -.3, -1.1, 0, s * -.9);
     const e = new THREE.Mesh(new THREE.SphereGeometry(.105, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffd84a, toneMapped: false })); e.position.set(s * .37, .27, .42); head.add(e);
     const pu = new THREE.Mesh(sph, new THREE.MeshBasicMaterial({ color: 0x1a0a10 })); pu.scale.set(.02, .08, .04); pu.position.set(s * .465, .27, .45); head.add(pu);
     for (let i = 0; i < 5; i++) add(new THREE.ConeGeometry(.035, .16, 4), bone, s * (.3 - i * .035), -.08, .55 + i * .22, Math.PI);   // teeth
@@ -485,11 +484,14 @@ let cape, scarf;
   add(new THREE.SphereGeometry(.3, 10, 8, 0, 6.3, 0, 1.75), hair, 0, 1.3, .06, -.35);
   add(sph, hair, 0, 1.36, -.2, 0, 0, [.2, .16, .2]);
   for (const s of [-1, 1]) {
-    add(new THREE.CylinderGeometry(.09, .1, .5, 6), tunic, s * .36, .82, .16, 1.0, s * -.2); add(new THREE.CylinderGeometry(.08, .09, .5, 6), skin, s * .4, .64, .56, 1.5);   // arms reaching forward
+    const sh = V3(s * .34, .9, .06), el = V3(s * .44, .62, .34), hd = V3(s * .17, .44, .7);      // one arm: shoulder, elbow, hand on the grip
+    for (const [a, b, r, m] of [[sh, el, .095, tunic], [el, hd, .08, tunic]]) { const o = add(new THREE.CylinderGeometry(r * .85, r, 1, 7), m, 0, 0, 0); o.position.copy(a).add(b).multiplyScalar(.5); const d = b.clone().sub(a); o.scale.y = d.length() + .06; o.quaternion.setFromUnitVectors(V3(0, 1, 0), d.normalize()); }
+    add(sph, tunic, el.x, el.y, el.z, 0, 0, [.095, .095, .095]); add(sph, skin, hd.x, hd.y, hd.z, 0, 0, [.085, .085, .085]);
     add(new THREE.CylinderGeometry(.14, .12, .75, 7), navy, s * .46, .12, .1, -.4, s * .4); add(new THREE.BoxGeometry(.2, .26, .42), leather, s * .62, -.3, .22, -.2);         // legs and boots
     add(sph, lam(col('#1f1f2c')), s * .11, 1.27, .36, 0, 0, [.07, .06, .04]);                // goggles
   }
   add(new THREE.CylinderGeometry(.24, .28, .2, 9), red, 0, 1.02, .04, .2);                   // scarf round the neck
+  add(new THREE.CylinderGeometry(.035, .035, .5, 6), leather, 0, .43, .72, 0, Math.PI / 2); add(new THREE.CylinderGeometry(.05, .07, .5, 6), leather, 0, .2, .72);   // a grip on the saddle to hold
   scarf = new THREE.Mesh(new THREE.PlaneGeometry(.2, 1.2, 1, 5), lam(col('#e23a4a'), { side: THREE.DoubleSide })); rider.add(scarf);
   cape = new THREE.Mesh(new THREE.PlaneGeometry(.85, 2.1, 2, 8), lam(col('#2a5ee0'), { side: THREE.DoubleSide })); cape.castShadow = true; rider.add(cape);
 }
@@ -558,7 +560,7 @@ function fly(dt) {
       P.setXYZ(o, cPt.x + (sideV.x * cx * 1.08 + upV.x * sy * fy) * r, cPt.y + (sideV.y * cx * 1.08 + upV.y * sy * fy) * r, cPt.z + (sideV.z * cx * 1.08 + upV.z * sy * fy) * r);
       Nn.setXYZ(o, sideV.x * cx + upV.x * sy, sideV.y * cx + upV.y * sy, sideV.z * cx + upV.z * sy);
     }
-    if (i > 5 && i < 58 && i % 2 === 0) { const sp = spikes[(i - 6) / 2], hgt = (.35 + r * .75) * (i < 14 ? .7 : 1); sp.scale.set(.5 + r * .7, hgt, .5 + r * .7); sp.position.copy(cPt).addScaledVector(upV, r * 1.0 + hgt * .35); sp.quaternion.setFromUnitVectors(UPV, v1.copy(upV).addScaledVector(cTan, .55).normalize()); }
+    if (i > 5 && i < 58 && i % 2 === 0) { const sp = spikes[(i - 6) / 2]; sp.visible = s > 4.7; /* none on the neck or under the saddle */ const hgt = (.35 + r * .75) * (i < 14 ? .7 : 1); sp.scale.set(.5 + r * .7, hgt, .5 + r * .7); sp.position.copy(cPt).addScaledVector(upV, r * 1.0 + hgt * .35); sp.quaternion.setFromUnitVectors(UPV, v1.copy(upV).addScaledVector(cTan, .55).normalize()); }
   }
   P.needsUpdate = Nn.needsUpdate = true;
   head.position.copy(spine[0]); v1.copy(spine[0]).sub(spine[1]).normalize(); head.quaternion.setFromUnitVectors(v2.set(0, 0, 1), v1);
