@@ -1,0 +1,28 @@
+{
+  "title": "make a wish",
+  "category": "art-styles",
+  "date": "2026-11-15",
+  "summary": "A birthday card you can send. A cake draws itself in pastel in a dark room; click to light the candles, make a wish, click to blow them out.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "javascript drawing with animation, canvas 2d, webaudio, single file",
+  "tags": [
+    "art style",
+    "pastel",
+    "birthday",
+    "card",
+    "interactive",
+    "draws itself",
+    "music box",
+    "procedural"
+  ],
+  "specs": {
+    "controls": "click to light the candles, click to blow them out, M for sound",
+    "personalise": "?name=Ada&age=7, or use \"make one for someone\" and \"share\" in the corner",
+    "size": "2400 x 1350, about 20,000 strokes, flames redrawn 12 times a second",
+    "tools": "soft pastel, oil pastel, coloured pencil, chalk",
+    "sound": "a music box playing Happy Birthday, synthesised in the page",
+    "libraries": "none",
+    "assets": "none, all made in code"
+  }
+}

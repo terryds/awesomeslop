@@ -27,6 +27,7 @@ function Preview({ art, thumb }: { art: Art; thumb?: boolean }) {
       src={thumb ? `${art.src}?thumb=1` : art.src /* a piece can read ?thumb=1 to hide its own controls */}
       title={art.title}
       sandbox={thumb ? 'allow-scripts' : 'allow-scripts allow-pointer-lock'}
+      allow={thumb ? undefined : 'clipboard-write' /* a piece with a share button can copy its own link */}
       loading={thumb ? 'lazy' : undefined}
       tabindex={thumb ? -1 : undefined}
     ></iframe>
