@@ -7,3 +7,5 @@ public/a
 # local exports (videos for sharing)
 *.mp4
 *.webm
+# ...but a video that is the art itself is kept
+!arts/**/*.mp4
