@@ -1,0 +1,36 @@
+{
+  "title": "little band",
+  "category": "animations",
+  "date": "2026-11-15",
+  "summary": "A needle drops on a record and three round birds join in, one instrument at a time: guitar, drum, piano. Thirty seconds, animated in Python and rendered in Blender.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "3d animated music video, python + blender (eevee), video",
+  "tags": [
+    "animation",
+    "3d",
+    "blender",
+    "python",
+    "music video",
+    "birds",
+    "vinyl",
+    "guitar",
+    "drum",
+    "piano",
+    "characters",
+    "music"
+  ],
+  "specs": {
+    "length": "30 seconds, then it loops",
+    "shots": "5: the record player, the guitar, the drum, the piano keys, the whole room",
+    "picture": "720 frames at 1080 × 1080, 24 a second",
+    "renderer": "Blender 5.0, EEVEE with ray tracing, run headless from one Python file",
+    "animation": "no keyframes: every frame is posed by code from the time alone",
+    "models": "all built in code, no imported assets",
+    "music": "generated with ElevenLabs Music from a five-section plan, 80 bpm",
+    "sync": "to the beat, not to the notes: plucks, hops and hi-hat taps land on a 0.75 second grid measured from the track",
+    "controls": "click for sound, then click or space to pause, ← → skip 5 s, m mutes",
+    "inspired by": "the Blender music video by @kevin_t_ngo, posted on X (the format only: instruments in a warm room, animated in Python; the characters, room and music are new)"
+  },
+  "cover": "poster.jpg"
+}
