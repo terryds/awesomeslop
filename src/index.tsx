@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { auth, currentUser, isAdmin } from './auth';
-import { artNo, arts, categories, claudeBreakdownUrl, getArt, getCategory } from './content';
+import { artNo, arts, categories, getArt, getCategory } from './content';
 import { Layout } from './layout';
-import { REPO_URL, refreshStars } from './stars';
+import { REPO_URL, formatStars, refreshStars, starCount } from './stars';
 import type { AppEnv, Art } from './types';
 
 const app = new Hono<AppEnv>();
@@ -240,6 +240,7 @@ app.get('/art/:slug', (c) => {
   const art = getArt(c.req.param('slug'));
   if (!art) return c.notFound();
   const category = getCategory(art.category);
+  const stars = starCount();
   const specs: [string, string | null][] = [
     ['model', art.model],
     ['agent', art.agent],
@@ -277,12 +278,9 @@ app.get('/art/:slug', (c) => {
             <button type="button" class="btn btn-lg" data-copy="#prompt-text" data-copied="copied. paste it to your agent">
               copy prompt for your agent
             </button>
-            <a href={claudeBreakdownUrl(art)} target="_blank" rel="noopener" class="btn btn-lg">
-              ask claude to break it down ↗
+            <a href={REPO_URL} target="_blank" rel="noopener" class="btn btn-lg">
+              ★ star on github{stars ? <span class="mono btn-count">{formatStars(stars)}</span> : null}
             </a>
-            <p class="mono dim hint">
-              the second button opens claude.ai with the prompt and a "break this down" question prefilled.
-            </p>
           </div>
         </div>
 

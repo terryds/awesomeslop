@@ -63,6 +63,7 @@ a { color: inherit; }
 .nav-gh .star { color: var(--accent); }
 .star-count { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--line); color: var(--fg); }
 .star-ask { margin: 10px 0 0; }
+.btn-count { padding: 1px 6px; border: 1px solid currentColor; }
 .site-footer { border-top: 1px solid var(--line); margin-top: 96px; }
 .site-footer .bar { height: 56px; }
 .foot-links { display: flex; gap: 20px; }
