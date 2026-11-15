@@ -1,0 +1,29 @@
+{
+  "title": "over the vale",
+  "category": "game-scenes",
+  "date": "2026-11-15",
+  "summary": "Ride a dragon over a river valley: under a stone aqueduct, round floating islands, through eight gates, from midday into dusk.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "flyable 3d scene, three.js, custom shaders on stock materials, single file",
+  "tags": [
+    "game scene",
+    "3d",
+    "flying",
+    "dragon",
+    "stylised",
+    "water reflection",
+    "grass",
+    "shaders",
+    "procedural"
+  ],
+  "specs": {
+    "controls": "click, mouse or WASD to steer, shift to go faster, T day / dusk",
+    "libraries": "three.js 0.170",
+    "assets": "none, all made in code",
+    "water": "the whole world is drawn a second time, upside down, and mirrored in the river and sea",
+    "grass": "150,000 blades in one patch that follows the camera",
+    "day and dusk": "a 120 second cycle",
+    "inspired by": "\"a painted 3D world\" by @LexnLin on X; the world, the dragon and the code are new"
+  }
+}
