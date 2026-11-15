@@ -167,6 +167,8 @@ const CURTAINS = [
   { pts: [[-70, 655], [300, 596], [640, 612], [905, 522], [822, 432], [1100, 352], [1500, 402], [1752, 300], [1655, 202], [2000, 118], [2470, 150]], h: [120, 400], sc: [.55, 1.45], amp: 1, hue: 0, k: 3 },
 ];
 let rays = [];
+// lantern posts beside the ski track: x, foot y, height, scale
+const LANTERNS = [[1042, 1206, 62, .7], [1262, 1262, 88, 1], [1452, 1326, 118, 1.35]];
 
 // ---------- the drawing, in the order a hand would do it ----------
 let pace = 20;
@@ -351,14 +353,19 @@ function* drawing() {
 
   // 6. snow: strokes that follow the drifts; blue in the dark, green where the sky reaches it
   pace = 18;
-  const pool = (x, y) => Math.exp(-Math.pow((x - 905) / 190, 2) - Math.pow((y - 1196) / 52, 2)) + .8 * Math.exp(-Math.pow((x - 600) / 130, 2) - Math.pow((y - 1168) / 30, 2));
+  const gs = (x, y, cx, cy, rx, ry) => Math.exp(-Math.pow((x - cx) / rx, 2) - Math.pow((y - cy) / ry, 2));
+  const pool = (x, y) => {
+    let p = gs(x, y, 752, 1176, 62, 20) + .7 * gs(x, y, 790, 1204, 80, 18) + .6 * gs(x, y, 812, 1158, 40, 11) + .55 * gs(x, y, 548, 1158, 40, 11) + .55 * gs(x, y, 628, 1164, 40, 11);
+    for (const [lx, ly, , k] of LANTERNS) p += gs(x, y, lx, ly + 6 * k, 92 * k, 24 * k);
+    return p;
+  };
   for (let y = 900; y < H + 20; y += 12) {
     for (let x = -80 + rr(0, 40); x < W + 40; x += rr(34, 60)) {
       const yy = y + rr(-6, 6); if (yy < shore(x) + 3) continue;
       const dr = fbm(x / 340, yy / 95, 3), sl = (fbm((x + 30) / 340, yy / 95, 3) - dr) * 2.6;
       const depth = (yy - shore(x)) / 300, L = .3 + (dr - .5) * 1.25 + .16 * sstep(.25, 0, depth) - .22 * sstep(.45, 1.1, depth) - .22 * sstep(1750, 2400, x) - .2 * sstep(330, 0, x);
       const p = pool(x, yy);
-      let c = rnd() < p * .95 ? mix(pick(WARM, .35 + p * .7), C('#ffd88a'), .5) : (L > .52 && rnd() < .42 ? mix(pick(SNOW, L + .1), AUR[2], .42) : pick(SNOW, L));
+      let c = rnd() < p * 1.05 ? mix(pick(WARM, .3 + p * .75), C('#ffd88a'), .5) : (L > .52 && rnd() < .42 ? mix(pick(SNOW, L + .1), AUR[2], .42) : pick(SNOW, L));
       const len = rr(60, 150);
       mark('pastel', x, yy, x + len, yy + len * sl + rr(-2, 2), rr(9, 15), css(c, 6), rr(.72, 1), rr(-.03, .03));
     }
@@ -385,6 +392,7 @@ function* drawing() {
   pace = 9;
   yield* spruce(388, 1092, 118, .9); yield* spruce(436, 1086, 168, 1); yield* spruce(912, 1098, 176, 1); yield* spruce(968, 1104, 112, .9);
   yield* cabin();
+  for (const L of LANTERNS) yield* lantern(...L);
 
   // 8. the big spruces that frame the page
   pace = 12;
@@ -400,6 +408,26 @@ function* drawing() {
   // initials, bottom right, the way you would
   mark('pencil', 2318, 1322, 2326, 1300, 2, css(SNOW[5], 4), .7); mark('pencil', 2326, 1300, 2335, 1322, 2, css(SNOW[5], 4), .7);
   mark('pencil', 2322, 1314, 2332, 1313, 1.8, css(SNOW[5], 4), .7); mark('pencil', 2342, 1322, 2362, 1319, 1.8, css(SNOW[5], 4), .6, .2);
+}
+
+function* lantern(x, foot, h, k) {
+  const top = foot - h, ink = C('#120a1e');
+  // snow heaped at the foot, warm on the side the light falls
+  for (let i = 0; i < 5; i++) mark('pastel', x - rr(14, 30) * k, foot + rr(-2, 6) * k, x + rr(14, 30) * k, foot + rr(0, 7) * k, rr(6, 10) * k, css(mix(pick(SNOW, rr(.5, .85)), C('#ffd88a'), rr(.2, .6)), 5), .95, rr(-.1, 0));
+  mark('oil', x, foot + 2, x + rr(-1.5, 1.5), top, 5.5 * k, css(C('#2a1a2e'), 4), 1);
+  mark('pencil', x - 2.4 * k, foot, x - 2.4 * k, top + 4, 1.8 * k, css(C('#b9824a'), 6), .7);   // the lit edge of the post
+  mark('oil', x - 1, top + 2 * k, x + 21 * k, top - 3 * k, 4.2 * k, css(C('#2a1a2e'), 4), 1);  // arm
+  const lx = x + 19 * k, ly = top + 4 * k;
+  mark('pencil', lx, top - 2 * k, lx, ly, 2 * k, css(ink, 3), 1);
+  glow(lx, ly + 13 * k, 78 * k, 78 * k, C('#ff9a3c'), .34); glow(lx, ly + 13 * k, 30 * k, 30 * k, C('#ffe08a'), .5);
+  yield;
+  hatch([[lx - 8 * k, ly], [lx + 8 * k, ly], [lx + 7 * k, ly + 22 * k], [lx - 7 * k, ly + 22 * k]], Math.PI / 2, 3.6 * k, 'oil', 4.6 * k, (px, py) => css(pick(S('#fff6c8', '#ffe07a', '#ffb84a'), Math.abs(px - lx) / (9 * k) + rr(-.2, .2)), 4), 1, 0);
+  mark('oil', lx - 11 * k, ly - 1, lx + 11 * k, ly - 1, 4.6 * k, css(ink, 3), 1);              // cap
+  mark('oil', lx - 9 * k, ly - 5 * k, lx + 9 * k, ly - 5 * k, 4.2 * k, css(SNOW[6], 4), 1);     // snow on the cap
+  mark('pencil', lx - 9 * k, ly + 23 * k, lx + 9 * k, ly + 23 * k, 2.6 * k, css(ink, 3), 1);
+  for (const o of [-8, 8]) mark('pencil', lx + o * k, ly, lx + o * .88 * k, ly + 22 * k, 1.8 * k, css(ink, 3), .95);
+  mark('oil', x - 5 * k, top - 2 * k, x + 5 * k, top - 3 * k, 4.4 * k, css(SNOW[6], 4), 1);     // snow on the post
+  yield;
 }
 
 function* spruce(cx, base, hgt, k) {
@@ -471,7 +499,13 @@ function* cabin() {
   yield;
   // snow banked against the walls, and the light the door throws on it
   for (let i = 0; i < 16; i++) { const u = rnd(), p = quad(u < .6 ? sideW : gabW, rnd(), 1); mark('pastel', p[0] - rr(14, 30), p[1] + rr(-3, 5), p[0] + rr(14, 30), p[1] + rr(-1, 7), rr(7, 11), css(pick(SNOW, rr(.4, .8)), 5), .95, rr(-.1, .02)); }
-  for (let i = 0; i < 26; i++) { const x = rr(710, 1010), y = 1150 + (x - 710) * .16 + rr(-8, 34), l = rr(24, 70); mark('pastel', x, y, x + l, y + l * .14, rr(5, 9), css(pick(S('#f29a80', '#f7c08c', '#ffd98a', '#fff0b8'), rnd() * Math.exp(-(x - 720) / 260) + .15), 5), rr(.45, .85)); }
+  for (let i = 0; i < 12; i++) { const x = rr(712, 800), y = 1152 + (x - 712) * .3 + rr(-4, 16), l = rr(18, 46); mark('pastel', x, y, x + l, y + l * .16, rr(5, 8), css(pick(S('#f7c08c', '#ffd98a', '#fff0b8'), rr(.2, 1)), 5), rr(.5, .9)); }
+  yield;
+  // a lantern on a hook between the door and the window
+  mark('pencil', 766, 1068, 766, 1078, 2, css(C('#1a0c22'), 3), 1);
+  glow(766, 1086, 34, 34, C('#ffab4a'), .42);
+  hatch([[761, 1079], [771, 1079], [771, 1093], [761, 1093]], Math.PI / 2, 3.5, 'oil', 4.5, () => css(C('#fff0b0'), 4), 1, 0);
+  mark('pencil', 760, 1078, 772, 1078, 2.4, css(C('#1a0c22'), 3), 1); mark('pencil', 760, 1094, 772, 1094, 2, css(C('#1a0c22'), 3), 1);
   yield;
 }
 

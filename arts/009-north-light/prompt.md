@@ -16,7 +16,7 @@ A fjord in the far north, just after the last of the twilight.
 - Mountains: a pale far range across the water and a darker, taller one on the right. Left faces lit, right faces in shadow, snow broken by dark rock, a pencil line along each ridge, mist at the foot. A line of tiny trees and seven lit windows on the far shore.
 - Water: level strokes, the sky upside down, the mountains dark in it, and the aurora lying on it in broken green dashes under where it hangs.
 - Snow in front: blue-violet drifts, green where the sky reaches them, a lip of ice along the water, two ski tracks coming up from the bottom of the page.
-- A small red cabin on the shore, left of centre: snow thick on the roof, icicles, chimney smoke, three lit windows and a lit door, and their light lying yellow on the snow. It is the only warm thing on the page.
+- A small red cabin on the shore, left of centre: snow thick on the roof, icicles, chimney smoke, three lit windows, a lit door and a lantern on a hook beside it. Three more lanterns on wooden posts follow the ski tracks toward the viewer, each a size bigger. Warm yellow light lies on the snow only where something lit throws it: under the door, under each window, in a pool at the foot of each post. These are the only warm things on the page.
 - Spruces heavy with snow: four small ones by the cabin, three big ones framing the left and right edges.
 - No people.
 
