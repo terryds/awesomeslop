@@ -35,6 +35,9 @@ export function Layout({ title, description, user, path, children }: Props) {
             </a>
             <nav class="nav">
               {nav('/', 'gallery')}
+              <a href="https://github.com/terryds/awesomeslop" class="nav-link nav-gh" target="_blank" rel="noopener">
+                github
+              </a>
               {user?.admin ? nav('/admin', 'admin') : null}
               {user ? (
                 <form method="post" action="/auth/signout" class="nav-user">
@@ -52,7 +55,10 @@ export function Layout({ title, description, user, path, children }: Props) {
         <footer class="site-footer">
           <div class="wrap bar mono dim">
             <span>awesomeslop / one art, one prompt</span>
-            <span>
+            <span class="foot-links">
+              <a href="https://github.com/terryds/awesomeslop" target="_blank" rel="noopener">
+                source on github
+              </a>
               <a href="/waitlist">waitlist</a>
             </span>
           </div>

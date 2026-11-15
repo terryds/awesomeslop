@@ -62,6 +62,7 @@ a { color: inherit; }
 .nav-link:hover, .nav-link.is-active { color: var(--fg); }
 .site-footer { border-top: 1px solid var(--line); margin-top: 96px; }
 .site-footer .bar { height: 56px; }
+.foot-links { display: flex; gap: 20px; }
 
 /* buttons: hard edges, no radius */
 .btn {
@@ -225,6 +226,7 @@ a { color: inherit; }
   .hero { padding-top: 56px; }
   .nav { gap: 14px; }
   .nav-email { display: none; }
+  .nav-gh { display: none; } /* still in the footer */
   .btn-lg { padding: 0 16px; font-size: 16px; white-space: normal; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
