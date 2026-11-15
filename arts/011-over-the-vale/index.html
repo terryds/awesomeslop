@@ -498,7 +498,7 @@ const capeBase = cape.geometry.attributes.position.array.slice(), scarfBase = sc
 // ---------- flight ----------
 const S = { pos: V3(PATH_R, 90, 0), vel: V3(0, 0, 26), yaw: 0, pitch: 0, roll: 0, speed: 26, tYaw: 0, tPitch: 0, yawRate: 0, pitchRate: 0, flap: 0, flapAmp: .4, shake: 0 };
 let flying = false, T = 0, todPhase = 0, tod = 0;
-if (q.has('at')) { const a = q.get('at').split(',').map(Number); S.pos.set(a[0] || 0, a[1] || 60, a[2] || 0); S.yaw = S.tYaw = a[3] || 0; S.vel.set(0, 0, 0); flying = true; if (a[4]) todPhase = 60; } // ?at=x,y,z,yaw[,1 for dusk]: start somewhere in particular
+if (q.has('at')) { const a = q.get('at').split(',').map(Number); S.pos.set(a[0] || 0, a[1] || 60, a[2] || 0); S.yaw = S.tYaw = a[3] || 0; S.vel.set(0, 0, 0); flying = true; if (a[4]) todPhase = a[4] === 1 ? 60 : a[4]; } // ?at=x,y,z,yaw[,1 for dusk, or seconds into the day]: start somewhere in particular
 let camYaw = S.yaw, camPitch = -.12; const want = new THREE.Vector3();
 const keys = {}, fwd = V3(0, 0, 1), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), before = new THREE.Vector3(), sideV = new THREE.Vector3(), upV = new THREE.Vector3(), cPt = new THREE.Vector3(), cTan = new THREE.Vector3();
 const wrap = a => { while (a > Math.PI) a -= 6.2832; while (a < -Math.PI) a += 6.2832; return a; };
