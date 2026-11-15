@@ -9,7 +9,7 @@
   .thumb canvas{object-fit:cover}
   .thumb #ui{display:none}
   #ui{position:fixed;inset:0;pointer-events:none;color:#f4e2c4;font:italic 17px Georgia,"Times New Roman",serif;text-shadow:0 1px 8px rgba(8,4,16,.9)}
-  #hint{position:absolute;left:0;right:0;bottom:13%;text-align:center;opacity:0;transition:opacity .8s;letter-spacing:.02em}
+  #hint{position:absolute;left:50%;transform:translateX(-50%);width:max-content;max-width:92%;bottom:13%;text-align:center;opacity:0;transition:opacity .8s;letter-spacing:.02em;background:rgba(22,16,34,.78);padding:6px 16px}
   #hint.on{opacity:.9}
   #bar{position:absolute;left:14px;bottom:12px;display:flex;gap:14px;align-items:flex-end;pointer-events:auto;font-size:16px}
   #bar button,#panel button{font:inherit;color:inherit;background:none;border:0;padding:2px 0;cursor:pointer;opacity:.8;border-bottom:1px solid rgba(244,226,196,.35)}
