@@ -16,5 +16,6 @@
     "controls": "click, WASD, shift, T, M",
     "libraries": "three.js 0.170",
     "assets": "none, all made in code"
-  }
+  },
+  "cover": "cover.webp"
 }

@@ -18,5 +18,6 @@
     "attempts": "8 rounds of feedback",
     "libraries": "none",
     "inspired by": "nazeondo's #pixelartpark postcards (instagram.com/nazeondo)"
-  }
+  },
+  "cover": "cover.webp"
 }

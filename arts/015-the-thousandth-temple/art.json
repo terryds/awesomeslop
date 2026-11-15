@@ -28,5 +28,6 @@
     "voices": "ElevenLabs, one clip per line, with word timings that drive the captions and the mouths",
     "music": "a small gamelan in a pelog tuning, made in the page",
     "inspired by": "the Egyptian pyramids podcast by @kevin_t_ngo, posted by @claudeai on X (the format only; hosts, script and drawings are new)"
-  }
+  },
+  "cover": "cover.webp"
 }

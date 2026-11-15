@@ -49,7 +49,11 @@ Create a folder in `arts/`. The folder name is the URL (`arts/004-my-piece` -> `
 gets its own section on the home page, in the order of that file; add a new one there (id, title, blurb) before
 using it. Tags are free-form.
 
-`cover` is optional for live pieces (the gallery shows the piece running) and required for image art.
+`cover` is required for image art. A live piece should have one too: the gallery shows the cover on its card and
+only runs the piece while the card is hovered, so the home page does not run every piece at once. Without a cover
+the card runs the piece all the time. `node scripts/make-cover.mjs` takes a screenshot of every live piece that has
+no cover yet, saves it as `cover.webp` and names it in `art.json` (needs Google Chrome; add `arts/<slug> <seconds>`
+to retake one at a better moment).
 The newest art gets the big frame on the home page, unless one art has `"featured": true` in its art.json; then that one does. Gallery previews load a live piece with `?thumb=1`, so a
 piece with on-screen instructions can hide them there. `"draft": true` hides an art. The dev server picks up changes in `arts/` on its own.
 

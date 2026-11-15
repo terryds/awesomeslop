@@ -19,9 +19,11 @@ app.route('/auth', auth);
 
 // ---------- gallery ----------
 
-function Preview({ art, thumb }: { art: Art; thumb?: boolean }) {
+// In the gallery (thumb) a live piece shows its still cover, so the page does not run every piece at once.
+// app.js starts the real piece inside the frame while the card is hovered: see liveSrc below.
+function Preview({ art, thumb, eager }: { art: Art; thumb?: boolean; eager?: boolean }) {
   if (art.kind === 'image' || (thumb && art.cover)) {
-    return <img src={art.cover ?? art.src} alt={art.title} loading={thumb ? 'lazy' : undefined} />;
+    return <img src={art.cover ?? art.src} alt={art.title} loading={thumb && !eager ? 'lazy' : undefined} />;
   }
   // Art runs sandboxed: scripts allowed, but no access to this site's cookies or DOM.
   return (
@@ -36,10 +38,13 @@ function Preview({ art, thumb }: { art: Art; thumb?: boolean }) {
   );
 }
 
+// For <div class="frame" data-live=...>: the piece to run on hover. Only pieces that show a cover need it.
+const liveSrc = (art: Art) => (art.kind === 'live' && art.cover ? `${art.src}?thumb=1` : undefined);
+
 function Card({ art }: { art: Art }) {
   return (
     <a href={`/art/${art.slug}`} class="card">
-      <div class="frame thumb">
+      <div class="frame thumb" data-live={liveSrc(art)}>
         <Preview art={art} thumb />
       </div>
       <div class="card-label">
@@ -106,8 +111,8 @@ app.get('/', (c) => {
       <section class="wrap">
         {featured ? (
           <a href={`/art/${featured.slug}`} class="card featured">
-            <div class="frame">
-              <Preview art={featured} thumb />
+            <div class="frame" data-live={liveSrc(featured)}>
+              <Preview art={featured} thumb eager /* top of the page: load it right away */ />
             </div>
             <div class="card-label">
               <span class="tag">

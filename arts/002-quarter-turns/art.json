@@ -14,5 +14,6 @@
   "specs": {
     "attempts": "1",
     "libraries": "none"
-  }
+  },
+  "cover": "cover.webp"
 }

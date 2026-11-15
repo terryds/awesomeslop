@@ -16,5 +16,6 @@
     "marks": "about 50,000 per painting",
     "libraries": "none",
     "inspired by": "Kevin Ngo's JavaScript drawings (x.com/kevin_t_ngo)"
-  }
+  },
+  "cover": "cover.webp"
 }

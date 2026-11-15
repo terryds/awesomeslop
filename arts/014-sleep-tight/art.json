@@ -28,5 +28,6 @@
     "assets": "none, all made in code",
     "sound": "web audio, made in code",
     "inspired by": "Kevin Ngo's '90s cereal commercial (the tape-and-tube look and the ad format; the product, story and characters are new)"
-  }
+  },
+  "cover": "cover.webp"
 }
