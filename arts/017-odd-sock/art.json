@@ -1,6 +1,5 @@
 {
   "title": "odd sock",
-  "draft": true,
   "category": "animations",
   "date": "2026-11-15",
   "summary": "A lost sock sings a disco song on top of a row of washing machines until the door opens and its pair jumps out. Dials, level lights and a mirror ball all follow the music. Animated in Python and rendered in Blender.",
