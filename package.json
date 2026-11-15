@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "content": "node scripts/build-content.mjs",
+    "covers": "node scripts/make-cover.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 migrations apply awesomeslop --local",

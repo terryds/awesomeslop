@@ -22,5 +22,6 @@
     "passes": "the scene, repainted in its own surface shaders, then one paper pass for outlines, sky and margin",
     "wash map": "256 x 256 cells over 128 m, each storing how covered it is and when the colour arrived",
     "inspired by": "watercolour by blendi on patch.gg (MIT / CC0), technique adapted; place and character are new"
-  }
+  },
+  "cover": "cover.webp"
 }

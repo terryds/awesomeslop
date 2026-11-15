@@ -22,5 +22,6 @@
     "libraries": "none",
     "assets": "none, all made in code",
     "inspired by": "JavaScript drawings by @kevin_t_ngo and @Ratchooo on X; the scene and code are new"
-  }
+  },
+  "cover": "cover.webp"
 }

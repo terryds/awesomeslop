@@ -20,5 +20,6 @@
     "assets": "none, all made in code",
     "passes": "lit scene + depth, normals + flat colour, then one pencil shader",
     "inspired by": "the look of a coloured-pencil town game slice (not its town, character or code)"
-  }
+  },
+  "cover": "cover.webp"
 }

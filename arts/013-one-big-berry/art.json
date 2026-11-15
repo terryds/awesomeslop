@@ -24,5 +24,6 @@
     "sound": "web audio, made in code",
     "lettering": "a tiny single-stroke handwriting font drawn as wobbly lines",
     "inspired by": "Kevin Ngo's crayon short (the drawing style only; story and characters are new)"
-  }
+  },
+  "cover": "cover.webp"
 }

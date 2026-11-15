@@ -54,3 +54,32 @@ document.addEventListener('click', async (event) => {
     window.open(link.href, '_blank', 'noopener');
   }
 });
+
+// Gallery cards show a still cover. On a device with a mouse, resting the pointer on a card runs the real piece
+// inside its frame (<div class="frame" data-live="piece url">) and leaving the card puts the cover back.
+// Only one piece runs at a time. Touch screens keep the cover: a tap opens the piece's page.
+if (matchMedia('(hover: hover)').matches) {
+  let timer;
+  const stop = (frame) => frame.querySelector('iframe')?.remove();
+  document.querySelectorAll('.card').forEach((card) => {
+    const frame = card.querySelector('[data-live]');
+    if (!frame) return;
+    card.addEventListener('pointerenter', () => {
+      clearTimeout(timer);
+      // A short wait, so sweeping the pointer across the grid does not start every piece it passes.
+      timer = setTimeout(() => {
+        document.querySelectorAll('[data-live] iframe').forEach((f) => f.remove());
+        const piece = document.createElement('iframe');
+        piece.src = frame.dataset.live;
+        piece.title = frame.querySelector('img')?.alt ?? '';
+        piece.setAttribute('sandbox', 'allow-scripts'); // same as before: no access to this site's cookies or DOM
+        piece.tabIndex = -1;
+        frame.append(piece);
+      }, 200);
+    });
+    card.addEventListener('pointerleave', () => {
+      clearTimeout(timer);
+      stop(frame);
+    });
+  });
+}
