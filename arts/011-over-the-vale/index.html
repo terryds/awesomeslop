@@ -11,8 +11,7 @@
   #hint{position:absolute;left:0;right:0;bottom:11%;text-align:center;transition:opacity .6s}
   #hint b{display:block;font:500 22px Georgia,serif;letter-spacing:.02em;margin-bottom:6px}
   #keys{position:absolute;left:14px;bottom:12px;opacity:0;transition:opacity .6s}
-  #gates{position:absolute;right:14px;bottom:12px;opacity:0;transition:opacity .6s;font-size:13px}
-  .flying #hint{opacity:0}.flying #keys{opacity:.75}.flying #gates{opacity:.9}
+  .flying #hint{opacity:0}.flying #keys{opacity:.75}
   @media (max-width:520px),(max-height:300px){#hud{display:none}}
 </style>
 <canvas id="c"></canvas>
@@ -20,7 +19,6 @@
 <div id="hud">
   <div id="hint"><b>click to fly</b>mouse to steer · W A S D · shift to go faster · T day / dusk</div>
   <div id="keys">mouse or W A S D · shift · T day / dusk · esc</div>
-  <div id="gates">gates 0 / 8</div>
 </div>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}
@@ -379,19 +377,8 @@ const clouds = [];
   }
 }
 
-// ---------- gates to fly through ----------
-const pathY = a => 78 + 30 * Math.sin(3 * a), PATH_R = 270, gates = [];
-{
-  const stone = new THREE.TorusGeometry(11, 1.6, 10, 40), stoneMat = () => patch(new THREE.MeshLambertMaterial({ color: col('#9a8fb4'), emissive: col('#ffb030'), emissiveIntensity: 0 }), {
-    key: 'gate', vdecl: 'varying vec3 vLp;', vpos: 'vLp=position;', fdecl: 'varying vec3 vLp;',
-    fcol: `{ float a=atan(vLp.y,vLp.x)*5.1, e=abs(fract(a)-.5)*2.; diffuseColor.rgb*=(.72+.4*h21(vec2(floor(a),1.)))*mix(.5,1.,smoothstep(1.,.88,e))*(.85+.3*vn(vLp.xy*1.3)); }` });
-  for (let k = 0; k < 8; k++) {
-    const a = k * Math.PI / 4 + .2, x = Math.cos(a) * PATH_R, z = Math.sin(a) * PATH_R, y = Math.max(pathY(a), ground(x, z) + 36);
-    const g = new THREE.Group(), ring = new THREE.Mesh(stone, stoneMat()), glow = new THREE.Mesh(new THREE.TorusGeometry(9.1, .32, 6, 48), new THREE.MeshBasicMaterial({ color: col('#bff4ff'), toneMapped: false }));
-    ring.castShadow = true; g.add(ring, glow); g.position.set(x, y, z);
-    const nrm = V3(-Math.sin(a), 0, Math.cos(a)); g.lookAt(g.position.clone().add(nrm)); scene.add(g); gates.push({ g, ring, glow, nrm, lit: false });
-  }
-}
+// the loop the dragon flies by itself before you take over
+const pathY = a => 78 + 30 * Math.sin(3 * a), PATH_R = 270;
 
 // ---------- birds, and specks in the air ----------
 const birds = [];
@@ -510,7 +497,7 @@ const capeBase = cape.geometry.attributes.position.array.slice(), scarfBase = sc
 
 // ---------- flight ----------
 const S = { pos: V3(PATH_R, 90, 0), yaw: 0, pitch: 0, roll: 0, speed: 26, tYaw: 0, tPitch: 0, yawRate: 0, pitchRate: 0, flap: 0, flapAmp: .4, shake: 0 };
-let flying = false, T = 0, todPhase = 0, tod = 0, lit = 0;
+let flying = false, T = 0, todPhase = 0, tod = 0;
 if (q.has('at')) { const a = q.get('at').split(',').map(Number); S.pos.set(a[0] || 0, a[1] || 60, a[2] || 0); S.yaw = S.tYaw = a[3] || 0; flying = true; if (a[4]) todPhase = 60; } // ?at=x,y,z,yaw[,1 for dusk]: start somewhere in particular
 const keys = {}, fwd = V3(0, 0, 1), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), before = new THREE.Vector3(), sideV = new THREE.Vector3(), upV = new THREE.Vector3(), cPt = new THREE.Vector3(), cTan = new THREE.Vector3();
 const wrap = a => { while (a > Math.PI) a -= 6.2832; while (a < -Math.PI) a += 6.2832; return a; };
@@ -520,7 +507,7 @@ function cat(arr, s, out) { // Catmull-Rom through the spine
 }
 const radAt = s => { const i = clamp(Math.floor(s), 0, RAD.length - 2), t = s - i; return lerp(RAD[i], RAD[i + 1], t * t * (3 - 2 * t)); };
 function fly(dt) {
-  if (!flying) { // autopilot round the gates
+  if (!flying) { // autopilot: a wide loop round the island
     const a = Math.atan2(S.pos.z, S.pos.x) + .28, tx = Math.cos(a) * PATH_R, tz = Math.sin(a) * PATH_R, ty = Math.max(pathY(a), ground(tx, tz) + 36);
     S.tYaw = Math.atan2(tx - S.pos.x, tz - S.pos.z); S.tPitch = clamp(Math.atan2(ty - S.pos.y, 70), -.5, .5);
   } else {
@@ -543,15 +530,6 @@ function fly(dt) {
   for (const il of islands) { v1.copy(S.pos).sub(il.position); v1.y *= 1.6; const r = il.userData.r * 1.02; if (v1.y < r * .3 && v1.length() < r) { v1.normalize(); S.pos.addScaledVector(v1, 40 * dt); S.shake = .3; } }
   S.shake = Math.max(0, S.shake - dt);
   dragon.position.copy(S.pos); dragon.rotation.set(-S.pitch, S.yaw, S.roll);
-  for (const gt of gates) {
-    if (gt.lit) continue;
-    const d0 = v1.copy(before).sub(gt.g.position).dot(gt.nrm), d1 = v2.copy(S.pos).sub(gt.g.position).dot(gt.nrm);
-    if (d0 * d1 <= 0 && v2.addScaledVector(gt.nrm, -d1).length() < 10) {
-      gt.lit = true; gt.ring.material.emissiveIntensity = 1.3; gt.glow.material.color.set('#ffd64a'); gt.t = T;
-      if (flying) { lit++; document.getElementById('gates').textContent = lit === 8 ? 'all eight gates lit' : `gates ${lit} / 8`; }
-    }
-  }
-  if (!flying) for (const gt of gates) if (gt.lit && T - gt.t > 14) { gt.lit = false; gt.ring.material.emissiveIntensity = 0; gt.glow.material.color.set('#bff4ff'); }
   // a wave runs down the spine; the neck leads a turn and the tail trails it
   const climb = clamp(S.pitch * 1.2 + (boost ? .6 : 0), -1, 1);
   S.flapAmp = lerp(S.flapAmp, .2 + .38 * sstep(-.5, .6, climb), 1 - Math.exp(-2 * dt)); S.flap += dt * (3.2 + 3.4 * sstep(-.4, .8, climb));
@@ -610,7 +588,7 @@ addEventListener('resize', resize); resize();
 const hud = document.getElementById('hud'); if (THUMB) hud.style.display = 'none';
 function start() {
   if (THUMB) return;
-  if (!flying) { flying = true; hud.classList.add('flying'); S.tYaw = S.yaw; S.tPitch = S.pitch; lit = 0; for (const g of gates) { g.lit = false; g.ring.material.emissiveIntensity = 0; g.glow.material.color.set('#bff4ff'); } }
+  if (!flying) { flying = true; hud.classList.add('flying'); S.tYaw = S.yaw; S.tPitch = S.pitch; }
   if (canvas.requestPointerLock) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
 }
 canvas.addEventListener('click', start);
@@ -632,7 +610,6 @@ function frame(now) {
   fly(dt); setTime(dt);
   for (const il of islands) il.position.y = il.userData.y + Math.sin(T * .35 + il.userData.ph) * 2.5;
   for (const c of clouds) { c.position.x += dt * 2.2; if (c.position.x > 2000) c.position.x = -2000; }
-  for (const g of gates) g.glow.rotation.z += dt * .4;
   for (const b of birds) { const u = b.userData; u.a += dt * 14 / u.r; b.position.set(u.cx + Math.cos(u.a) * u.r, u.y + Math.sin(T * .6 + u.ph) * 5, u.cz + Math.sin(u.a) * u.r); b.rotation.set(0, -u.a, Math.sin(T * 7 + u.ph) * .35); b.scale.setScalar(u.s * 2); }
   if (flying) {
     v1.set(Math.sin(S.yaw) * Math.cos(S.pitch * .7), Math.sin(S.pitch * .7), Math.cos(S.yaw) * Math.cos(S.pitch * .7));

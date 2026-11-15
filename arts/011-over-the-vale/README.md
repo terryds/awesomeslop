@@ -4,7 +4,7 @@ Ride a dragon over a river valley: under a stone aqueduct, round floating island
 
 **Click the scene, then:** steer with the mouse, or W A S D and the arrows. Shift or Space to go faster. T jumps between day and dusk. Esc lets go of the mouse.
 
-There are eight stone gates in a loop round the island. Fly through one and it lights gold. The river is the best place to fly low: the arches of the aqueduct are wide enough to go through.
+It is free roam: no goal and nothing to collect. The river is the best place to fly low: the arches of the aqueduct are wide enough to go through.
 
 ## what you're looking at
 
@@ -32,4 +32,4 @@ Nothing here is a model or a texture file. The detail is in the surfaces.
 
 ## credit
 
-The look this aims for, a lush hand-painted valley with an aqueduct over a river, comes from ["a painted 3D world"](https://x.com/LexnLin/status/2121634005745635683) by Leon Lin. No code or assets were used from it. The island, the gates, the dragon and rider and all the shaders here are new.
+The look this aims for, a lush hand-painted valley with an aqueduct over a river, comes from ["a painted 3D world"](https://x.com/LexnLin/status/2121634005745635683) by Leon Lin. No code or assets were used from it. The island, the dragon and rider and all the shaders here are new.

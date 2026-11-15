@@ -1,4 +1,4 @@
-Make a single self-contained HTML file: a small flying game called "over the vale", where you ride a dragon over a river valley. Use three.js 0.170 from a CDN through an import map. No other libraries, no downloaded models, textures, fonts or sounds: everything is made in code.
+Make a single self-contained HTML file: a free-roam flying scene called "over the vale", where you ride a dragon over a river valley. There is no goal, no score and nothing to collect: the place is the point. Use three.js 0.170 from a CDN through an import map. No other libraries, no downloaded models, textures, fonts or sounds: everything is made in code.
 
 THE LOOK
 A bright, clean, stylised game world in high detail, like a hand-painted animated film turned into a game: saturated greens, a deep blue sky with soft white cumulus, turquoise water, lilac-grey stone. Smooth shading, soft shadows from one sun, filmic tone mapping, light haze in the distance, a faint vignette. No post-processing filter over the picture. Get the detail from the surfaces themselves:
@@ -21,7 +21,5 @@ A crimson dragon about 17 m long. The body is one smooth skin rebuilt round a sp
 On a saddle at its shoulders sits a small rider: white tunic, belt, dark hair, goggles, a red scarf with a loose end, boots, and a blue cape streaming out behind.
 
 FLYING
-Before the first click the dragon flies itself in a wide circle through the gates while the camera drifts round it, with a "click to fly" hint. On click the camera drops in behind and the visitor steers: mouse (pointer lock, with drag as a fallback) or W A S D and the arrows to turn, climb and dive; Shift or Space to go faster. The dragon always flies forward, picks up speed in a dive, cannot go through the ground, bumps up and over the aqueduct's stone but passes through its arches, is pushed off the floating islands, and turns for home if it gets far out to sea.
-Eight great stone rings hang in the air in a loop round the island, each with a pale blue glowing rim. Fly through one and it lights gold. A small counter says "gates 3 / 8", and "all eight gates lit" at the end.
-
+Before the first click the dragon flies itself in a wide loop round the island while the camera drifts round it, with a "click to fly" hint. On click the camera drops in behind and the visitor steers: mouse (pointer lock, with drag as a fallback) or W A S D and the arrows to turn, climb and dive; Shift or Space to go faster. The dragon always flies forward, picks up speed in a dive, cannot go through the ground, bumps up and over the aqueduct's stone but passes through its arches, is pushed off the floating islands, and turns for home if it gets far out to sea.
 Hide all text when the page is loaded with ?thumb=1, and when the window is very small. Keep it smooth on a laptop: draw the mirrored world at half size, leave the grass out of it, cap the pixel ratio and lower it if frames get slow. Handle window resize.
