@@ -1,0 +1,38 @@
+{
+  "title": "odd sock",
+  "draft": true,
+  "category": "animations",
+  "date": "2026-11-15",
+  "summary": "A lost sock sings a disco song on top of a row of washing machines until the door opens and its pair jumps out. Dials, level lights and a mirror ball all follow the music. Animated in Python and rendered in Blender.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "3d animated music video, python + blender (eevee), video",
+  "tags": [
+    "animation",
+    "3d",
+    "blender",
+    "python",
+    "music video",
+    "disco",
+    "laundromat",
+    "socks",
+    "gauges",
+    "mirror ball",
+    "characters",
+    "music",
+    "lip sync"
+  ],
+  "specs": {
+    "length": "76 seconds, then it loops",
+    "shots": "21, every cut on a beat",
+    "picture": "1,826 frames at 1080 × 1080, 24 a second",
+    "renderer": "Blender 5.0, EEVEE with ray tracing and a little haze, run headless from one Python file",
+    "animation": "no keyframes: every frame is posed by code from the time and from measurements of the song",
+    "models": "all built in code, no imported assets",
+    "music": "generated with ElevenLabs Music from a seven-section plan with lyrics, 120 bpm",
+    "what follows the music": "dial needles and level lights (loudness of the bass, drums, vocals and other parts, split into stems), spot colours and hops (the beat grid), flashes (each kick drum hit), mouths (the sung letters, aligned to the vocal)",
+    "controls": "click for sound, then click or space to pause, ← → skip 5 s, m mutes",
+    "inspired by": "the Blender music video by @kevin_t_ngo, posted on X (the format only: a sung music video animated in Python; the song, characters and set are new)"
+  },
+  "cover": "poster.jpg"
+}

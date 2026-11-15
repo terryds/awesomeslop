@@ -1,0 +1,17 @@
+{
+  "model_id": "music_v1",
+  "respect_sections_durations": true,
+  "composition_plan": {
+    "positive_global_styles": ["disco pop", "nu-disco", "120 bpm", "four-on-the-floor kick", "syncopated funk bass guitar", "rhythm guitar chops", "lush disco strings", "bright warm female lead vocal", "playful and romantic", "polished studio mix", "key of A minor"],
+    "negative_global_styles": ["slow tempo", "lo-fi", "rap", "heavy metal", "dubstep", "tempo changes"],
+    "sections": [
+      {"section_name": "Intro", "positive_local_styles": ["washing machine hum turning into a steady kick drum", "filtered bass building", "open hi-hats entering", "instrumental"], "negative_local_styles": ["vocals"], "duration_ms": 8000, "lines": []},
+      {"section_name": "Verse", "positive_local_styles": ["lead vocal with bass and drums", "sparse guitar chops", "storytelling, a little wistful"], "negative_local_styles": ["backing choir"], "duration_ms": 16000, "lines": ["Went in as a pair on a Friday night", "Warm water, low light, you were holding tight", "Then the drum went round and the door swung wide", "Now I'm one odd sock on the folding side"]},
+      {"section_name": "Pre-Chorus", "positive_local_styles": ["rising strings", "snare build", "growing tension"], "negative_local_styles": [], "duration_ms": 8000, "lines": ["Every dial is shaking, every light turns blue", "Forty degrees and I'm still missing you"]},
+      {"section_name": "Chorus", "positive_local_styles": ["big catchy hook", "three-part female backing harmonies", "full disco strings", "hand claps"], "negative_local_styles": [], "duration_ms": 16000, "lines": ["Spin cycle, spin me back to you", "Round and round till the wash is through", "Spin cycle, I'm no good as one", "Don't stop turning till the night is done"]},
+      {"section_name": "Bridge", "positive_local_styles": ["breakdown, drums drop out", "soft electric piano and filtered bass", "intimate close vocal", "kick returns in the last bar"], "negative_local_styles": ["full drums"], "duration_ms": 8000, "lines": ["Is that you behind the glass?", "Tumbling slow, at last, at last"]},
+      {"section_name": "Final Chorus", "positive_local_styles": ["biggest section", "joyful", "backing harmonies", "full disco strings", "hand claps"], "negative_local_styles": [], "duration_ms": 16000, "lines": ["Spin cycle, you spun me back to you", "Round and round, now the wash is through", "Spin cycle, we're a pair again", "Leave the light on, play it once again"]},
+      {"section_name": "Outro", "positive_local_styles": ["one final band hit on the downbeat", "ringing string chord fading out", "instrumental"], "negative_local_styles": ["vocals"], "duration_ms": 4000, "lines": []}
+    ]
+  }
+}
