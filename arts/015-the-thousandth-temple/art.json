@@ -1,0 +1,32 @@
+{
+  "title": "the thousandth temple",
+  "category": "animations",
+  "date": "2026-11-15",
+  "summary": "A two-and-a-half-minute video podcast about Candi Prambanan: two cartoon hosts drawn in code, real photos on the big screen, and the legend of Roro Jonggrang told as a shadow play.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "animated video podcast, canvas 2d + web audio, six photographs, recorded voices",
+  "tags": [
+    "animation",
+    "podcast",
+    "explainer",
+    "cartoon",
+    "characters",
+    "indonesia",
+    "prambanan",
+    "folklore",
+    "wayang",
+    "music",
+    "voices"
+  ],
+  "specs": {
+    "length": "about two and a half minutes, then it loops",
+    "controls": "click for sound, then click or space to pause, ← → skip 5 s, m mutes, v voices on / off",
+    "libraries": "none",
+    "drawn in code": "the hosts, the studio, the ground plan, the encyclopedia page, the shadow play, the map, the captions",
+    "photographs": "six, from Wikimedia Commons (CC BY-SA), credited on screen and in the notes",
+    "voices": "ElevenLabs, one clip per line, with word timings that drive the captions and the mouths",
+    "music": "a small gamelan in a pelog tuning, made in the page",
+    "inspired by": "the Egyptian pyramids podcast by @kevin_t_ngo, posted by @claudeai on X (the format only; hosts, script and drawings are new)"
+  }
+}
