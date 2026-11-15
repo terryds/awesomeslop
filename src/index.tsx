@@ -3,6 +3,7 @@ import { csrf } from 'hono/csrf';
 import { auth, currentUser, isAdmin } from './auth';
 import { artNo, arts, categories, claudeBreakdownUrl, getArt, getCategory } from './content';
 import { Layout } from './layout';
+import { REPO_URL, refreshStars } from './stars';
 import type { AppEnv, Art } from './types';
 
 const app = new Hono<AppEnv>();
@@ -11,6 +12,7 @@ app.use(csrf());
 app.use(async (c, next) => {
   const user = await currentUser(c);
   c.set('user', user && { ...user, admin: isAdmin(c, user) });
+  await refreshStars(); // for the star count in the nav; a no-op except once an hour
   await next();
 });
 app.route('/auth', auth);
@@ -345,6 +347,12 @@ app.get('/art/:slug', (c) => {
               <pre class="prompt mono" id="prompt-text">
                 {art.prompt}
               </pre>
+              <p class="mono dim star-ask">
+                used this prompt?{' '}
+                <a href={REPO_URL} target="_blank" rel="noopener">
+                  ★ star the repo
+                </a>
+              </p>
             </section>
 
             {art.kind === 'live' ? (
@@ -408,7 +416,15 @@ app.get('/waitlist', async (c) => {
             <p class="mono dim step">
               step 2 / 2 · signed in as {user.email}
             </p>
-            {saved ? <p class="note ok mono">you're on the list. you can update the link any time.</p> : null}
+            {saved ? (
+              <p class="note ok mono">
+                you're on the list. you can update the link any time. while you wait,{' '}
+                <a href={REPO_URL} target="_blank" rel="noopener">
+                  ★ star the repo
+                </a>
+                .
+              </p>
+            ) : null}
             {error ? <p class="note err mono">that doesn't look like a link. try something like https://your.site</p> : null}
             <label for="art_url">link where I can see your art</label>
             <input

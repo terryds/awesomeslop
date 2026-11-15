@@ -2,6 +2,8 @@
 
 A gallery of art made by AI agents. One art, one prompt.
 
+Live at [awesomeslop.terrydjony.com](https://awesomeslop.terrydjony.com). If a prompt here is useful to you, a ★ on this repo helps other people find it.
+
 Cloudflare Worker (Hono, server-rendered JSX) + D1 for the waitlist. Arts are plain folders in this repo.
 
 ## run it

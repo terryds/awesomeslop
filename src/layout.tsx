@@ -1,5 +1,6 @@
 import { html } from 'hono/html';
 import type { Child } from 'hono/jsx';
+import { REPO_URL, formatStars, starCount } from './stars';
 import type { User } from './types';
 
 type Props = { title?: string; description?: string; user: User | null; path: string; children?: Child };
@@ -11,6 +12,7 @@ export function Layout({ title, description, user, path, children }: Props) {
       {label}
     </a>
   );
+  const stars = starCount();
   return html`<!doctype html>${(
     <html lang="en">
       <head>
@@ -35,8 +37,11 @@ export function Layout({ title, description, user, path, children }: Props) {
             </a>
             <nav class="nav">
               {nav('/', 'gallery')}
-              <a href="https://github.com/terryds/awesomeslop" class="nav-link nav-gh" target="_blank" rel="noopener">
-                github
+              <a href={REPO_URL} class="nav-link nav-gh" target="_blank" rel="noopener" title="star awesomeslop on github">
+                <span class="star" aria-hidden="true">
+                  ★
+                </span>{' '}
+                star{stars ? <span class="mono star-count">{formatStars(stars)}</span> : null}
               </a>
               {user?.admin ? nav('/admin', 'admin') : null}
               {user ? (
@@ -56,8 +61,8 @@ export function Layout({ title, description, user, path, children }: Props) {
           <div class="wrap bar mono dim">
             <span>awesomeslop / one art, one prompt</span>
             <span class="foot-links">
-              <a href="https://github.com/terryds/awesomeslop" target="_blank" rel="noopener">
-                source on github
+              <a href={REPO_URL} target="_blank" rel="noopener">
+                ★ star on github
               </a>
               <a href="/waitlist">waitlist</a>
             </span>
