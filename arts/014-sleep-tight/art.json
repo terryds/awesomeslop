@@ -1,0 +1,32 @@
+{
+  "title": "sleep tight",
+  "category": "animations",
+  "date": "2026-11-15",
+  "summary": "A '90s Indonesian TV ad for a mosquito coil that never existed: a mosquito gang, a sleepless father, and smoke that makes a fist. Played off a worn tape on a curved tube.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "animated commercial, canvas 2d + web audio, single file",
+  "tags": [
+    "animation",
+    "cartoon",
+    "commercial",
+    "90s",
+    "vhs",
+    "crt",
+    "indonesia",
+    "characters",
+    "music",
+    "procedural"
+  ],
+  "specs": {
+    "length": "60 seconds (120 bpm), then it loops",
+    "shots": "10, with a station bumper at each end",
+    "language": "Indonesian on screen",
+    "controls": "click for sound, then click or space to pause, ← → skip 5 s, m mutes",
+    "picture": "drawn at 640 × 480, then run through a fake tape and tube",
+    "libraries": "none",
+    "assets": "none, all made in code",
+    "sound": "web audio, made in code",
+    "inspired by": "Kevin Ngo's '90s cereal commercial (the tape-and-tube look and the ad format; the product, story and characters are new)"
+  }
+}
