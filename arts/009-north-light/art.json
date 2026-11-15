@@ -1,0 +1,26 @@
+{
+  "title": "north light",
+  "category": "art-styles",
+  "date": "2026-11-15",
+  "summary": "An aurora over a fjord, drawn stroke by stroke in pastel, oil pastel, pencil and chalk on dark paper. It draws itself while you watch.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "javascript drawing, canvas 2d, single file",
+  "tags": [
+    "art style",
+    "pastel",
+    "coloured pencil",
+    "aurora",
+    "night",
+    "draws itself",
+    "procedural"
+  ],
+  "specs": {
+    "controls": "click to finish the drawing; click again for a new one",
+    "size": "2400 x 1350, about 21,000 strokes",
+    "tools": "soft pastel, oil pastel, coloured pencil, chalk, a finger",
+    "libraries": "none",
+    "assets": "none, all made in code",
+    "inspired by": "JavaScript drawings by @kevin_t_ngo and @Ratchooo on X; the scene and code are new"
+  }
+}
