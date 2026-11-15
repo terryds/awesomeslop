@@ -19,7 +19,7 @@
     "procedural"
   ],
   "specs": {
-    "controls": "click, mouse or WASD to steer, shift to go faster, T day / dusk",
+    "controls": "click, mouse to look, WASD to fly, space up, C down, shift faster, T day / dusk",
     "libraries": "three.js 0.170",
     "assets": "none, all made in code",
     "water": "the whole world is drawn a second time, upside down, and mirrored in the river and sea",

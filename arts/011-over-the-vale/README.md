@@ -2,7 +2,7 @@
 
 Ride a dragon over a river valley: under a stone aqueduct, round floating islands, out over the sea, from midday into dusk.
 
-**Click the scene, then:** steer with the mouse, or W A S D and the arrows. Shift or Space to go faster. T jumps between day and dusk. Esc lets go of the mouse.
+**Click the scene, then:** the mouse looks around. W flies the way you are looking, S comes back, A and D go sideways, Space goes up and C goes down. Shift is faster. Let go of everything and the dragon stops and hovers. T jumps between day and dusk. Esc lets go of the mouse.
 
 It is free roam: no goal and nothing to collect. The river is the best place to fly low: the arches of the aqueduct are wide enough to go through.
 
@@ -26,7 +26,7 @@ Nothing here is a model or a texture file. The detail is in the surfaces.
 
 ## limits
 
-- Desktop first. On a phone you can watch, and drag to steer after a tap.
+- Desktop first. On a phone you can watch, and drag to look after a tap, but there are no keys to move with.
 - The mirrored world leaves out the grass and the drifting specks.
 - You bump off stone and islands, but there is no landing, and no sound.
 

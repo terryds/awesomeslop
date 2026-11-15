@@ -21,5 +21,11 @@ A crimson dragon about 17 m long. The body is one smooth skin rebuilt round a sp
 On a saddle at its shoulders sits a small rider: white tunic, belt, dark hair, goggles, a red scarf with a loose end, boots, and a blue cape streaming out behind.
 
 FLYING
-Before the first click the dragon flies itself in a wide loop round the island while the camera drifts round it, with a "click to fly" hint. On click the camera drops in behind and the visitor steers: mouse (pointer lock, with drag as a fallback) or W A S D and the arrows to turn, climb and dive; Shift or Space to go faster. The dragon always flies forward, picks up speed in a dive, cannot go through the ground, bumps up and over the aqueduct's stone but passes through its arches, is pushed off the floating islands, and turns for home if it gets far out to sea.
+Before the first click the dragon flies itself in a wide loop round the island while the camera drifts round it, with a "click to fly" hint. On click the visitor takes over, with the controls of a third-person game:
+- The mouse is the camera (pointer lock, with drag as a fallback). It orbits the dragon: left and right to turn, up and down to raise or lower the view.
+- W A S D and the arrows move the dragon relative to where the camera looks: W flies the way you are looking, including up or down; S comes back toward the camera; A and D go sideways. Space or E goes straight up, C or Q straight down. Shift is faster.
+- With no key held, the dragon slows, stops and hovers in place, beating its wings hard and bobbing. It never moves by itself.
+- The dragon turns to face the way it is travelling, noses up or down with its climb, and banks into turns.
+It cannot go through the ground, is stopped by the aqueduct's stone but passes through its arches, and is pushed off the floating islands.
+
 Hide all text when the page is loaded with ?thumb=1, and when the window is very small. Keep it smooth on a laptop: draw the mirrored world at half size, leave the grass out of it, cap the pixel ratio and lower it if frames get slow. Handle window resize.
