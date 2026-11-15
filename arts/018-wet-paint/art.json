@@ -1,0 +1,34 @@
+{
+  "title": "wet paint",
+  "category": "animations",
+  "date": "2026-11-15",
+  "summary": "The little Claude mascot walks through five unfinished paintings with a brush and adds what each one is missing, then hangs them on a wall and paints himself. Drawn live in canvas 2D.",
+  "model": "Claude Fable 5.2",
+  "agent": "Claude Code",
+  "medium": "animated short film, canvas 2d + web audio, single file",
+  "tags": [
+    "animation",
+    "claude mascot",
+    "painting",
+    "watercolour",
+    "ink",
+    "gouache",
+    "impasto",
+    "koi",
+    "sunflowers",
+    "characters",
+    "music",
+    "procedural"
+  ],
+  "specs": {
+    "length": "60 seconds (24 bars at 96 bpm), then it loops",
+    "scenes": "6, ten seconds each, joined by brush-stroke wipes",
+    "styles": "pencil sketch and watercolour, ink on rice paper, gouache night, thick short strokes, flat top-down pond, a gallery wall",
+    "controls": "click for sound, then click or space to pause, ← → skip 5 s, m mutes",
+    "libraries": "none",
+    "assets": "none, every picture is drawn by code when the page loads",
+    "sound": "web audio, made in code",
+    "inspired by": "the one-minute canvas film posted by @chetaslua on X (the format only: the mascot finishing paintings in pure JS; the six paintings here are new)"
+  },
+  "cover": "cover.webp"
+}
