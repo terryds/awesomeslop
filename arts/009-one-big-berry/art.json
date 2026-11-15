@@ -1,0 +1,28 @@
+{
+  "title": "one big berry",
+  "category": "animations",
+  "date": "2026-11-14",
+  "summary": "A crayon cartoon: a small hedgehog finds one enormous strawberry and has to get it home.",
+  "model": "Claude Opus 5.5",
+  "agent": "Claude Code",
+  "medium": "animated cartoon, canvas 2d + web audio, single file",
+  "tags": [
+    "animation",
+    "cartoon",
+    "crayon",
+    "hand-drawn",
+    "characters",
+    "music",
+    "procedural"
+  ],
+  "specs": {
+    "length": "76.8 seconds (32 bars at 100 bpm), then it loops",
+    "shots": "13, cutting between wide shots and close-ups",
+    "controls": "click for sound, then click or space to pause, ← → skip 5 s, m mutes",
+    "libraries": "none",
+    "assets": "none, all made in code",
+    "sound": "web audio, made in code",
+    "lettering": "a tiny single-stroke handwriting font drawn as wobbly lines",
+    "inspired by": "Kevin Ngo's crayon short (the drawing style only; story and characters are new)"
+  }
+}

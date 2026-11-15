@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>one big berry</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#f4efe2}
+  canvas{display:block;width:100%;height:100%;cursor:pointer}
+  .hand{font-family:"Segoe Print","Bradley Hand","Chalkboard SE","Comic Sans MS","Comic Neue",cursive;color:#2a3590}
+  #hint{position:fixed;left:0;right:0;bottom:5%;text-align:center;pointer-events:none;transition:opacity .8s}
+  #hint span{display:inline-block;padding:6px 16px 8px;background:rgba(244,239,226,.85);border-radius:4px;box-shadow:0 0 14px 8px rgba(244,239,226,.7);font-size:19px}
+  #hint small{display:block;font-size:12px;opacity:.65;margin-top:3px}
+  #ui{position:fixed;right:12px;bottom:9px;font-size:13px;opacity:.6;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint" class="hand"><span>click for sound<small>space pauses · ← → skip 5 s · m mutes</small></span></div>
+<div id="ui" class="hand"></div>
+<script>
+'use strict';
+// ---------------------------------------------------------------- setup
+const q = new URLSearchParams(location.search);
+const THUMB = q.has('thumb');
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const hintEl = document.getElementById('hint'), uiEl = document.getElementById('ui');
+if (THUMB) { hintEl.style.display = 'none'; uiEl.style.display = 'none'; }
+
+const PI = Math.PI, TAU = PI * 2, GY = 720, LEN = 76.8;
+const INK = '#2a3590', INK2 = '#1b2055', PAPER = '#f4efe2';
+const C = {
+  spine: '#7a4a2a', spine2: '#4e2e18', kid: '#a87048', face: '#f6d9ae', face2: '#ecbd86', foot: '#6e432a',
+  red: '#e23e38', red2: '#a3202b', seed: '#f7d651', leaf: '#5fae49', leaf2: '#357a33', grass: '#5c9f3a',
+  ground: '#d2392c', blush: '#f2758f', sun: '#f8cb45', sun2: '#f0952f', sky: '#9cc0ea', stump: '#b97d4b',
+  stump2: '#7a4a28', rock: '#a1a6ae', rock2: '#6a717c', night: '#2f3f8a', drop: '#86c4ee'
+};
+
+let W, H, DPR, VS, baseK, paperC, toothPat;
+let T = 0, B = 0, GA = 1;
+
+// ---------------------------------------------------------------- math & noise
+const lerp = (a, b, t) => a + (b - a) * t, clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function h1(x) { x |= 0; x = Math.imul(x ^ (x >>> 16), 0x7feb352d); x = Math.imul(x ^ (x >>> 15), 0x846ca68b); x ^= x >>> 16; return (x >>> 0) / 4294967296; }
+const h2 = (x, y) => h1(Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263));
+function vn(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  return lerp(lerp(h2(xi, yi), h2(xi + 1, yi), u), lerp(h2(xi, yi + 1), h2(xi + 1, yi + 1), u), v) * 2 - 1;
+}
+function rng(seed) {
+  let s = (seed | 0) ^ 0x9e3779b9;
+  return () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const EASE = {
+  l: p => p, io: p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2,
+  o: p => 1 - Math.pow(1 - p, 3), i: p => p * p * p, q: p => p * p,
+  b: p => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); },
+  el: p => p <= 0 ? 0 : p >= 1 ? 1 : Math.pow(2, -9 * p) * Math.sin((p * 9 - .75) * TAU / 3) + 1,
+  s: p => p < 1 ? 0 : 1
+};
+// keyframes: [[t, v, ease], ...] — the ease shapes the move *into* that key
+function kf(u, k) {
+  if (u <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) if (u <= k[i][0]) {
+    const a = k[i - 1], b = k[i], p = (u - a[0]) / (b[0] - a[0] || 1);
+    return a[1] + (b[1] - a[1]) * EASE[b[2] || 'io'](p);
+  }
+  return k[k.length - 1][1];
+}
+const hop = (u, t0, d, h) => { const p = (u - t0) / d; return p > 0 && p < 1 ? 4 * h * p * (1 - p) : 0; };
+// squash & stretch after a landing: returns [sx, sy]
+function land(u, t0, amt = .35) { const d = u - t0; if (d < 0 || d > .8) return [1, 1]; const k = Math.exp(-d * 7) * Math.cos(d * 22) * amt; return [1 + k * .8, 1 - k]; }
+// stretch while in the air of a hop
+function air(u, t0, d) { const p = (u - t0) / d; if (p <= 0 || p >= 1) return [1, 1]; const k = Math.sin(p * PI) * .14; return [1 - k * .6, 1 + k]; }
+
+// ---------------------------------------------------------------- shapes as point lists
+function ell(cx, cy, rx, ry, n = 24, rot = 0) {
+  const p = [], c = Math.cos(rot), s = Math.sin(rot);
+  for (let i = 0; i < n; i++) { const a = i / n * TAU, x = Math.cos(a) * rx, y = Math.sin(a) * ry; p.push(cx + x * c - y * s, cy + x * s + y * c); }
+  return p;
+}
+function arc(cx, cy, rx, ry, a0, a1, n = 16) { const p = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; p.push(cx + rx * Math.cos(a), cy + ry * Math.sin(a)); } return p; }
+// catmull-rom through control points
+function cr(c, closed = true, seg = 6) {
+  const n = c.length / 2, out = [];
+  const P = i => { i = closed ? ((i % n) + n) % n : clamp(i, 0, n - 1); return [c[2 * i], c[2 * i + 1]]; };
+  const m = closed ? n : n - 1;
+  for (let i = 0; i < m; i++) {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    for (let j = 0; j < seg; j++) {
+      const t = j / seg, t2 = t * t, t3 = t2 * t;
+      for (let k = 0; k < 2; k++) out.push(.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3));
+    }
+  }
+  if (!closed) out.push(...P(n - 1));
+  return out;
+}
+function xform(p, dx, dy, s = 1, rot = 0) { const c = Math.cos(rot), si = Math.sin(rot), o = []; for (let i = 0; i < p.length; i += 2) { const x = p[i] * s, y = p[i + 1] * s; o.push(dx + x * c - y * si, dy + x * si + y * c); } return o; }
+
+// ---------------------------------------------------------------- the doodle toolkit
+// local units per stage unit at the current transform (so strokes keep a steady size)
+function U() { const m = ctx.getTransform(); return baseK / Math.hypot(m.a, m.b); }
+// the 'boil': displace a line by smooth noise that is re-rolled 8 times a second
+function wob(p, closed, amp, seed, u) {
+  const out = [], n = p.length / 2, m = closed ? n : n - 1, st = 8 * u, fq = .03 / Math.sqrt(u), bo = B * 1.731 + seed * 9.17;
+  const add = (x, y) => out.push(x + amp * vn(x * fq + bo, y * fq + 3.3), y + amp * vn(x * fq + 11.7, y * fq + bo));
+  for (let i = 0; i < m; i++) {
+    const j = (i + 1) % n, x0 = p[2 * i], y0 = p[2 * i + 1], x1 = p[2 * j], y1 = p[2 * j + 1];
+    const k = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / st));
+    for (let s = 0; s < k; s++) add(x0 + (x1 - x0) * s / k, y0 + (y1 - y0) * s / k);
+  }
+  if (!closed) add(p[2 * n - 2], p[2 * n - 1]);
+  return out;
+}
+function poly(p, closed) { ctx.beginPath(); ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); if (closed) ctx.closePath(); }
+// wobbly ink outline: a main pen line plus a faint second pass, like a sketch
+function ink(p, closed = true, w = 1, col = INK, a = 1) {
+  const u = U(), su = Math.sqrt(u);
+  ctx.strokeStyle = col; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  poly(wob(p, closed, 1.4 * su, 1, u), closed); ctx.globalAlpha = .9 * a * GA; ctx.lineWidth = 2.1 * w * su; ctx.stroke();
+  poly(wob(p, closed, 2.2 * su, 2, u), closed); ctx.globalAlpha = .28 * a * GA; ctx.lineWidth = 1.1 * w * su; ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+// crayon line: thick waxy stroke with gaps
+function crayLine(p, col, w = 1, a = 1) {
+  const u = U(), su = Math.sqrt(u);
+  ctx.strokeStyle = col; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  poly(wob(p, false, 1.6 * su, 3, u), false); ctx.globalAlpha = .75 * a * GA; ctx.lineWidth = 3 * w * su; ctx.stroke();
+  ctx.setLineDash([9 * u, 3 * u, 4 * u, 2 * u]);
+  poly(wob(p, false, 2.2 * su, 5, u), false); ctx.globalAlpha = .55 * a * GA; ctx.lineWidth = 2 * w * su; ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+}
+function solid(p, col, a = 1) { const u = U(); poly(wob(p, true, .9 * Math.sqrt(u), 4, u), true); ctx.fillStyle = col; ctx.globalAlpha = a * GA; ctx.fill(); ctx.globalAlpha = 1; }
+// crayon hatching: many short jittered strokes at an angle, in three pressures
+function hatchPass(paths, x0, y0, x1, y1, ang, r, sp, u, c2p) {
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot(x1 - x0, y1 - y0) / 2, ca = Math.cos(ang), sa = Math.sin(ang);
+  for (let d = -R; d < R; d += sp * (.65 + r() * .7)) {
+    let s = -R - r() * 20 * u;
+    while (s < R) {
+      const L = (12 + r() * 38) * u, j = (r() - .5) * 1.4 * u, tw = (r() - .5) * .14;
+      const ax = cx + ca * s - sa * (d + j), ay = cy + sa * s + ca * (d + j);
+      const P = c2p && r() < .2 ? c2p : paths[(r() * 3) | 0];
+      P.moveTo(ax, ay); P.lineTo(ax + Math.cos(ang + tw) * L, ay + Math.sin(ang + tw) * L);
+      s += L + r() * 5 * u;
+    }
+  }
+}
+function hatch(x0, y0, x1, y1, col, ang, seed, dens, u, alpha, c2) {
+  const r = rng(seed * 977 + B * 131 + 7), sp = 3.1 * Math.pow(u, .85) / dens;
+  const paths = [new Path2D(), new Path2D(), new Path2D()], p2 = c2 ? new Path2D() : null, px = [new Path2D(), new Path2D(), new Path2D()];
+  hatchPass(paths, x0, y0, x1, y1, ang, r, sp, u, p2);
+  hatchPass(px, x0, y0, x1, y1, ang + .55, r, sp * 2.2, u, null);
+  ctx.lineCap = 'round'; ctx.lineWidth = 1.8 * Math.pow(u, .85); ctx.strokeStyle = col;
+  [.4, .65, .9].forEach((a, i) => { ctx.globalAlpha = a * alpha * GA; ctx.stroke(paths[i]); });
+  [.12, .2, .3].forEach((a, i) => { ctx.globalAlpha = a * alpha * GA; ctx.stroke(px[i]); });
+  if (c2) { ctx.strokeStyle = c2; ctx.globalAlpha = .65 * alpha * GA; ctx.stroke(p2); }
+  ctx.globalAlpha = 1;
+}
+function bbox(p) { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); } return [x0, y0, x1, y1]; }
+// crayon fill: clip to a wobbled (slightly over-the-line) outline, light underlayer, then hatch
+function crayon(p, col, o = {}) {
+  const u = U(), seed = (o.seed || 0) * 31 + Math.round(p[0] * 7 + p[1] * 13);
+  ctx.save();
+  poly(wob(p, true, (o.over ?? 2.6) * Math.sqrt(u), 7 + (o.seed || 0), u), true); ctx.clip();
+  if (o.base !== 0) { ctx.globalAlpha = GA * (o.base ?? 1); ctx.fillStyle = PAPER; ctx.fill(); } // opaque paper first: shapes cover what is behind
+  if (o.under !== 0) { ctx.globalAlpha = (o.under ?? .22) * (o.a ?? 1) * GA; ctx.fillStyle = col; ctx.fill(); }
+  const [x0, y0, x1, y1] = bbox(p);
+  hatch(x0 - 8 * u, y0 - 8 * u, x1 + 8 * u, y1 + 8 * u, col, o.ang ?? -.95, seed, o.d ?? 1, u, o.a ?? 1, o.c2);
+  ctx.restore();
+}
+function shape(p, col, o = {}) { crayon(p, col, o); ink(p, true, o.w ?? 1, INK, o.ia ?? 1); }
+
+// ---------------------------------------------------------------- handwriting (a tiny single-stroke font)
+const G = (() => {
+  const O = (cx, cy, rx, ry) => arc(cx, cy, rx, ry, .35, .35 + TAU * .98, 22);
+  const n = (x) => arc(x + .33, .6, .33, .38, PI, 0, 10);
+  return {
+    ' ': { w: .45, s: [] },
+    a: { w: .85, s: [O(.37, .5, .35, .48), [.72, .96, .72, .08, .82, 0]] },
+    b: { w: .85, s: [[.05, 1.75, .05, 0], arc(.42, .48, .36, .48, PI, PI + TAU, 22)] },
+    c: { w: .8, s: [arc(.4, .5, .36, .48, PI * .22, PI * 1.8, 18)] },
+    d: { w: .9, s: [O(.37, .5, .35, .48), [.72, 1.75, .72, .08, .82, 0]] },
+    e: { w: .82, s: [[.05, .5, .76, .5, ...arc(.4, .5, .36, .48, 0, PI * 1.75, 18)]] },
+    f: { w: .62, s: [[.6, 1.55, .42, 1.75, .25, 1.6, .22, 1.2, .22, 0], [0, 1, .5, 1]] },
+    g: { w: .85, s: [O(.37, .55, .35, .45), [.72, 1, .72, -.35, ...arc(.42, -.35, .3, .35, 0, -PI, 10)]] },
+    h: { w: .85, s: [[.05, 1.75, .05, 0], [...n(.05), .71, 0]] },
+    i: { w: .32, s: [[.12, 1, .12, 0], [.1, 1.4, .14, 1.46]] },
+    k: { w: .7, s: [[.05, 1.75, .05, 0], [.62, 1, .08, .42, .62, 0]] },
+    l: { w: .38, s: [[.12, 1.75, .12, .12, .24, 0]] },
+    m: { w: 1.2, s: [[.05, 1, .05, 0], [...arc(.3, .62, .25, .38, PI, 0, 10), .55, 0], [...arc(.8, .62, .25, .38, PI, 0, 10), 1.05, 0]] },
+    n: { w: .85, s: [[.05, 1, .05, 0], [...n(.05), .71, 0]] },
+    o: { w: .85, s: [arc(.4, .5, .38, .5, .4, .4 + TAU * 1.02, 24)] },
+    p: { w: .85, s: [[.05, 1, .05, -.75], arc(.42, .52, .36, .48, PI, PI + TAU, 22)] },
+    r: { w: .62, s: [[.05, 1, .05, 0], arc(.38, .55, .33, .42, PI, PI * .3, 8)] },
+    s: { w: .72, s: [cr([.66, .88, .5, 1, .2, .98, .06, .8, .2, .6, .5, .45, .68, .26, .58, .05, .3, 0, .04, .12], false, 4)] },
+    t: { w: .7, s: [[.3, 1.55, .3, .18, .42, 0, .6, .06], [.02, 1, .62, 1.02]] },
+    u: { w: .8, s: [[.05, 1, .05, .35, ...arc(.37, .35, .32, .35, PI, TAU, 10), .69, 1], [.69, 1, .69, 0]] },
+    v: { w: .75, s: [[0, 1, .35, 0, .7, 1]] },
+    w: { w: 1.05, s: [[0, 1, .24, 0, .5, .8, .76, 0, 1, 1]] },
+    y: { w: .85, s: [[0, 1, .42, .08], [.82, 1, .3, -.55, .18, -.72, .05, -.68]] },
+    z: { w: .72, s: [[0, 1, .62, 1, 0, 0, .66, 0]] },
+    '!': { w: .3, s: [[.1, 1.75, .1, .5], [.08, .08, .12, .13]] },
+    '?': { w: .85, s: [cr([.08, 1.35, .25, 1.65, .55, 1.72, .78, 1.5, .7, 1.2, .45, 1.0, .42, .62], false, 4), [.42, .1, .44, .14]] },
+    '.': { w: .25, s: [[.05, .03, .09, .07]] },
+    '>': { w: 1.2, s: [[0, .5, 1.1, .5], [.8, .82, 1.12, .5, .8, .18]] }
+  };
+})();
+function textWidth(str, size) { let w = 0; for (const ch of str) w += (G[ch] || G[' ']).w + .2; return (w - .2) * size; }
+function write(str, x, y, size, o = {}) {
+  const chars = [...str], w = textWidth(str, size), lw = Math.pow(size / 40, .7) * (o.w ?? 1);
+  let cx = o.align === 'left' ? x : x - w / 2;
+  const n = o.reveal != null ? Math.floor(o.reveal * chars.length + 1e-4) : chars.length;
+  for (let i = 0; i < n; i++) {
+    const g = G[chars[i]] || G[' '], sd = (o.seed || 0) + i * 17;
+    ctx.save(); ctx.translate(cx, y + (h1(sd) - .5) * .1 * size); ctx.rotate((h1(sd + 5) - .5) * .12);
+    for (const s of g.s) { const p = []; for (let k = 0; k < s.length; k += 2) p.push(s[k] * size, -s[k + 1] * size); ink(p, false, lw, o.col || INK); }
+    ctx.restore();
+    cx += (g.w + .2) * size;
+  }
+}
+
+// ---------------------------------------------------------------- characters
+// spiky hedgehog body: quills on the top and back, smooth belly and front
+function spiky(cx, cy, rx, ry, seed) {
+  const p = [], r = rng(seed), a0 = -.36 * PI, a1 = -1.22 * PI, n = 11;
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + (a1 - a0) * i / n; p.push(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
+    if (i < n) { const am = a + (a1 - a0) / (2 * n) - .16, k = 1.3 + r() * .12; p.push(cx + Math.cos(am) * rx * k, cy + Math.sin(am) * ry * k); }
+  }
+  for (let i = 1; i < 16; i++) { const a = a1 + (a0 - TAU - a1) * i / 16; p.push(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry); }
+  return p;
+}
+const BODY = spiky(-4, -54, 60, 50, 3);
+const FACE = cr([-2, -100, 30, -98, 58, -82, 84, -64, 93, -54, 86, -44, 64, -34, 44, -14, 16, -5, -2, -20, -10, -62], true, 6);
+
+function eye(x, y, rx, ry, st, lx, ly, k) {
+  if (st === 'happy') { ink(cr([x - rx, y + 3, x, y - ry * .7, x + rx, y + 3], false, 4), false, 1.25); return; }
+  if (st === 'closed') { ink(cr([x - rx, y - 1, x, y + ry * .45, x + rx, y - 1], false, 4), false, 1.25); return; }
+  if (st === 'strain') { const d = k ? -1 : 1; ink([x - rx * .7 * d, y - ry * .6, x + rx * .6 * d, y, x - rx * .7 * d, y + ry * .6], false, 1.3); return; }
+  if (st === 'dizzy') { const p = []; for (let i = 0; i < 26; i++) { const a = i * .5 + T * 9 * (k ? 1 : -1), r = rx * i / 26; p.push(x + Math.cos(a) * r, y + Math.sin(a) * r * ry / rx); } ink(p, false, 1); return; }
+  const big = st === 'wide' ? 1.22 : 1; rx *= big; ry *= big;
+  solid(ell(x, y, rx, ry, 18), '#fffdf6'); ink(ell(x, y, rx, ry, 18), true, .9);
+  const pr = rx * .64, px = x + lx * rx * .3, py = y + ly * ry * .3 + (st === 'sad' ? ry * .12 : 0);
+  solid(ell(px, py, pr, pr * 1.12, 14), INK2);
+  solid(ell(px - pr * .36, py - pr * .42, pr * .4, pr * .4, 10), '#fff');
+  solid(ell(px + pr * .36, py + pr * .4, pr * .18, pr * .18, 8), '#fff');
+  if (st === 'sad') ink([x - rx * 1.0, y - ry * (k ? 1.5 : 1.15), x + rx * 1.0, y - ry * (k ? 1.15 : 1.5)], false, 1);
+  if (st === 'wide' && k) { ctx.save(); ctx.translate(px + pr * .2, py - pr * .1); sparkle(0, 0, pr * .5, false); ctx.restore(); }
+}
+function mouth(st, x, y) {
+  if (st === 'chew') st = Math.floor(T * 7) % 2 ? 'o' : 'line';
+  switch (st) {
+    case 'smile': ink(cr([x - 8, y - 3, x, y + 3, x + 7, y - 4], false, 4), false, .9); break;
+    case 'grin': { const p = cr([x - 10, y - 4, x + 8, y - 6, x + 4, y + 6, x - 4, y + 7], true, 4); solid(p, '#8b2232'); solid(ell(x - 1, y + 3, 4.5, 2.6, 10), '#f07b8c'); ink(p, true, .9); break; }
+    case 'o': solid(ell(x, y + 1, 4.2, 5.2, 12), '#8b2232'); ink(ell(x, y + 1, 4.2, 5.2, 12), true, .8); break;
+    case 'strain': ink([x - 9, y, x - 5, y - 3, x - 1, y, x + 3, y - 3, x + 7, y], false, .9); break;
+    case 'frown': ink(cr([x - 8, y + 3, x, y - 2, x + 7, y + 3], false, 4), false, .9); break;
+    case 'line': ink([x - 6, y, x + 6, y - 1], false, .9); break;
+    case 'sleep': solid(ell(x, y, 2.6, 2.2, 8), '#8b2232'); break;
+  }
+}
+// the hedgehog. origin = between the feet on the ground, facing +x before `dir`
+function hog(o) {
+  const s = o.s ?? 1.3, dir = o.dir ?? 1, seed = o.seed || 1;
+  if (o.shadow !== false) shadow(o.x, o.y, 64 * s * (o.sx ?? 1));
+  ctx.save(); ctx.translate(o.x, o.y); if (o.rot) ctx.rotate(o.rot); ctx.scale(s * dir * (o.sx ?? 1), s * (o.sy ?? 1));
+  const ph = o.walk; let f1x = -20, f1y = -6, f2x = 26, f2y = -6, bob = 0;
+  if (ph != null) { const sp = Math.sin(ph), cp = Math.cos(ph); f1x += sp * 11; f2x -= sp * 11; f1y -= Math.max(0, cp) * 9; f2y -= Math.max(0, -cp) * 9; bob = -Math.abs(cp) * 6; }
+  shape(ell(f1x, f1y, 15, 8, 14), C.foot, { seed: seed + 1, w: .8, a: .8 });
+  if (o.arm2 != null) { ctx.save(); ctx.translate(20, -40); ctx.rotate(o.arm2); shape(ell(0, 14, 6.5, 15, 12), C.foot, { seed: seed + 9, w: .8 }); ctx.restore(); }
+  shape(ell(f2x, f2y, 15, 8, 14), C.foot, { seed: seed + 2, w: .8, a: .8 });
+  ctx.translate(0, bob + (o.lift || 0));
+  if (o.carry) { const rl = o.carry.r / s; berry({ x: -14, y: -90 - rl * .78, r: rl, rot: o.carry.rot ?? -.3 }); }
+  shape(BODY, o.spine || C.spine, { ang: -1.15, c2: C.spine2, seed: seed + 3, d: 1.1 });
+  // quills
+  for (let i = 0; i < 9; i++) { const a = -.42 * PI - i * .09 * PI; ink([-4 + Math.cos(a) * 34, -54 + Math.sin(a) * 28, -4 + Math.cos(a - .14) * 56, -54 + Math.sin(a - .14) * 47], false, .55, INK, .55); }
+  shape(ell(6, -99, 10, 9, 12), C.face, { seed: seed + 4, w: .8 });
+  shape(FACE, C.face, { ang: -.6, c2: C.face2, seed: seed + 5, a: .6, under: .35, d: .85 });
+  if (o.red) crayon(FACE, '#ee4d3e', { a: o.red, base: 0, under: .3, seed: seed + 11 });
+  const bl = o.blush ?? 1;
+  crayon(ell(20, -42, 11, 6.5, 14), C.blush, { a: .85 * bl, base: 0, under: .45, over: 1, seed: seed + 6, d: 1.3 });
+  crayon(ell(60, -47, 6.5, 4.5, 12), C.blush, { a: .7 * bl, base: 0, under: .45, over: 1, seed: seed + 7, d: 1.3 });
+  const lx = o.lx ?? .6, ly = o.ly ?? 0, es = o.eye || 'open';
+  eye(28, -67, 10.5, 12.5, es, lx, ly, 0);
+  eye(55, -66, 8.5, 11, es, lx, ly, 1);
+  solid(ell(92, -55, 7.5, 6.5, 12), INK2); solid(ell(90, -57.5, 2.2, 1.6, 8), '#fff', .9);
+  mouth(o.mouth || 'smile', 80, -40);
+  if (o.tear) { const ty = -56 + (o.tear % 1) * 26; shape(cr([24, ty - 8, 28, ty, 24, ty + 4, 20, ty], true, 3), C.drop, { w: .6, under: .5 }); }
+  ctx.save(); ctx.translate(46, -22); ctx.rotate(o.arm ?? .35); shape(ell(0, 14, 6.5, 15, 12), C.foot, { seed: seed + 8, w: .8, a: .8 }); ctx.restore();
+  ctx.restore();
+}
+
+// strawberry with local radius 100; origin = centre of the fruit
+const BERRY = cr([0, -80, 58, -90, 96, -56, 100, 0, 76, 52, 38, 88, 0, 100, -38, 88, -76, 52, -100, 0, -96, -56, -58, -90], true, 6);
+const SEEDS = (() => { const r = rng(42), out = []; let tries = 0; while (out.length < 26 && tries++ < 3000) { const x = (r() * 2 - 1) * 82, y = -62 + r() * 145; const lim = 86 * (1 - Math.max(0, (y - 10) / 100)); if (Math.abs(x) > lim) continue; if (out.some(q => Math.hypot(q[0] - x, q[1] - y) < 25)) continue; out.push([x, y]); } return out; })();
+function berry(o) {
+  ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(o.rot || 0); ctx.scale(o.r / 100 * (o.sx ?? 1), o.r / 100 * (o.sy ?? 1));
+  if (!o.capOnly) {
+    crayon(BERRY, C.red, { c2: C.red2, ang: -.85, seed: 21, d: 1.05, under: .3 });
+    crayon(ell(-52, -36, 12, 26, 14, .55), '#fff4ea', { base: 0, under: .55, seed: 22, over: 1 });
+    for (const [x, y] of SEEDS) { const a = Math.atan2(y, x) + PI / 2; solid(ell(x, y, 3.4, 5.4, 10, a), C.seed); ink(ell(x, y, 3.4, 5.4, 8, a), true, .45, INK, .7); }
+    ink(BERRY, true, 1.1);
+  }
+  capDraw();
+  ctx.restore();
+}
+function capDraw() {
+  const angs = [3.05, 2.35, 1.6, .85, .1, -.55, -2.6];
+  for (const a of angs) {
+    const c = ell(Math.cos(a) * 30, -84 + Math.sin(a) * 13, 30, 11, 14, Math.atan2(Math.sin(a) * .45, Math.cos(a)));
+    shape(c, C.leaf, { c2: C.leaf2, seed: 30 + Math.round(a * 10), w: .9, ang: -.4 });
+  }
+  crayLine([0, -88, 3, -104, 9, -116], C.leaf2, 1.6);
+  ink([0, -88, 3, -104, 9, -116], false, .7);
+}
+function shadow(x, y, w) { crayon(ell(x, y + 2, w, w * .12, 22), INK, { a: .3, under: 0, base: 0, ang: -.5, d: .9, over: 1.2, seed: 5 }); }
+
+// ---------------------------------------------------------------- scenery
+const flat = () => GY;
+function vrect() { const m = ctx.getTransform().inverse(); const a = m.transformPoint(new DOMPoint(0, 0)), b = m.transformPoint(new DOMPoint(cv.width, cv.height)); return [a.x, a.y, b.x, b.y]; }
+function ground(fy, seed = 0) {
+  const [x0, , x1] = vrect(), p = [];
+  for (let x = x0 - 40; x <= x1 + 40; x += 24) p.push(x, fy(x) + vn(x * .01, seed) * 2);
+  crayLine(p, C.ground, 1.15);
+  for (let i = Math.floor(x0 / 70) - 1; i <= x1 / 70 + 1; i++) {
+    const r = h1(i * 13 + seed * 101);
+    const x = i * 70 + h1(i * 7 + seed) * 50;
+    if (r < .42) tuft(x, fy(x), .8 + h1(i * 3) * .7, i + seed * 50);
+    else if (r > .9) flower(x, fy(x), ['#f2758f', '#f6c945', '#8fb4ef', '#f39a55'][(h1(i * 5 + seed) * 4) | 0], i);
+  }
+}
+function tuft(x, y, s, i) {
+  const n = 3 + ((h1(i * 5) * 2.5) | 0);
+  for (let k = 0; k < n; k++) {
+    const o = (k - (n - 1) / 2), a = -PI / 2 + o * .38 + (h1(i * 9 + k) - .5) * .25, L = (14 + h1(i * 11 + k) * 14) * s;
+    crayLine([x + o * 3, y, x + o * 3 + Math.cos(a) * L * .5, y + Math.sin(a) * L * .5 - 1, x + o * 4 + Math.cos(a) * L, y + Math.sin(a) * L], C.grass, .55);
+  }
+}
+function flower(x, y, col, i) {
+  const h = 30 + h1(i * 3) * 18, bend = (h1(i) - .5) * 10;
+  crayLine([x, y, x + bend * .5, y - h * .5, x + bend, y - h], C.grass, .55);
+  for (let k = 0; k < 5; k++) { const a = k / 5 * TAU + i; shape(ell(x + bend + Math.cos(a) * 7, y - h + Math.sin(a) * 7, 6, 4.5, 10, a), col, { w: .5, under: .4, seed: i + k }); }
+  solid(ell(x + bend, y - h, 3.5, 3.5, 8), '#f6c945'); ink(ell(x + bend, y - h, 3.5, 3.5, 8), true, .5);
+}
+function sun(x, y, r, t) {
+  for (let i = 0; i < 11; i++) { const a = i / 11 * TAU + t * .15; crayLine([x + Math.cos(a) * (r + 14), y + Math.sin(a) * (r + 14), x + Math.cos(a) * (r + 34), y + Math.sin(a) * (r + 34)], C.sun2, .8); }
+  shape(ell(x, y, r, r, 26), C.sun, { c2: C.sun2, ang: -.8, seed: 9 });
+}
+function cloud(x, y, s, sd) {
+  const p = [];
+  for (let i = 0; i < 26; i++) { const a = i / 26 * TAU, bump = Math.sin(a) < .1 ? 1 + .18 * Math.abs(Math.sin(a * 3.5 + sd)) : .92; p.push(x + Math.cos(a) * 95 * s * bump, y + Math.sin(a) * 42 * s * (Math.sin(a) > 0 ? .7 : bump * 1.2)); }
+  shape(p, C.sky, { a: .55, d: .7, ang: -.3, seed: sd, under: .12 });
+}
+function sky(camx, t) { ctx.save(); cam(500 + (camx - 500) * .08, 470, 1); sun(840, 175, 52, t); cloud(220 + t * 5, 165, 1, 1); cloud(600 + t * 3, 95, .6, 2); cloud(1300, 190, .8, 3); cloud(-280, 120, .7, 4); ctx.restore(); }
+function sign(x, y, txt, w = 210, h = 74, tilt = -.04) {
+  crayLine([x - 2, y + 2, x, y - 110], C.ground, 1.1);
+  ctx.save(); ctx.translate(x, y - 140); ctx.rotate(tilt);
+  const p = [-w / 2, -h / 2, w / 2, -h / 2, w / 2, h / 2, -w / 2, h / 2];
+  crayon(p, '#fbf6e8', { under: .7, a: .3, seed: 77 });
+  ink(p, true, 1);
+  write(txt, 0, 12, 30, { seed: 3 });
+  ctx.restore();
+}
+function rock(x, y, s = 1) { shape(xform(cr([-80, 0, -74, -44, -32, -80, 24, -84, 70, -48, 84, 0], true, 6), x, y, s), C.rock, { c2: C.rock2, seed: 41, ang: -1.2 }); ink(xform([-20, -60, -2, -40, 14, -46], x, y, s), false, .7); }
+function stump(x, y, door = 0, night = 0, t = 0) {
+  ctx.save(); ctx.translate(x, y);
+  for (let i = 0; i < 3; i++) { const p = (t * .3 + i / 3) % 1; GA = (1 - p) * .8; ink(ell(48 + Math.sin(p * 5 + i) * 12, -262 - p * 130, 9 + p * 16, 7 + p * 12, 14), true, .7); GA = 1; }
+  shape([30, -192, 32, -252, 56, -252, 58, -192], '#9aa0aa', { seed: 61, w: .9 });
+  const body = cr([-128, 0, -104, -36, -100, -120, -98, -194, 0, -200, 98, -194, 100, -120, 104, -36, 128, 0, 0, 3], true, 6);
+  shape(body, C.stump, { c2: C.stump2, ang: -1.4, seed: 62 });
+  for (const bx of [-78, -44, 46, 80]) ink([bx, -24, bx + 4, -70, bx - 3, -120, bx + 2, -176], false, .6, INK, .5);
+  shape(ell(0, -197, 99, 20, 30), '#e8bc84', { seed: 63, ang: -.3 });
+  ink(ell(0, -197, 62, 12, 22), true, .55, INK, .7); ink(ell(0, -197, 28, 5.5, 16), true, .55, INK, .7);
+  const dp = [-34, 0, -34, -60, ...arc(0, -60, 34, 34, PI, TAU, 10), 34, 0];
+  solid(dp, '#2a2448');
+  if (door > 0) { const gl = ctx.createRadialGradient(0, -40, 4, 0, -40, 60); gl.addColorStop(0, 'rgba(255,214,110,.75)'); gl.addColorStop(1, 'rgba(255,214,110,0)'); ctx.fillStyle = gl; ctx.globalAlpha = door; poly(dp, true); ctx.fill(); ctx.globalAlpha = 1; }
+  ctx.save(); ctx.translate(-34, 0); ctx.scale(1 - door * .82, 1); ctx.translate(34, 0);
+  shape(dp, '#7a4a2a', { c2: '#55301b', seed: 64, ang: -1.45 });
+  solid(ell(20, -40, 4.5, 4.5, 10), '#f2c14e'); ink(ell(20, -40, 4.5, 4.5, 10), true, .5);
+  ctx.restore();
+  if (night) { const gl = ctx.createRadialGradient(-50, -128, 5, -50, -128, 90); gl.addColorStop(0, 'rgba(255,215,110,.55)'); gl.addColorStop(1, 'rgba(255,215,110,0)'); ctx.fillStyle = gl; ctx.fillRect(-150, -230, 200, 200); }
+  shape(ell(-50, -128, 22, 22, 18), night ? '#ffd765' : '#cfe3f5', { seed: 65, under: .5 });
+  ink([-72, -128, -28, -128], false, .7); ink([-50, -150, -50, -106], false, .7);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- effects
+function heart(x, y, s, a = 1) { const p = []; for (let i = 0; i < 24; i++) { const t = i / 24 * TAU; p.push(x + 16 * Math.pow(Math.sin(t), 3) * s / 16, y - (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * s / 16); } GA = a; shape(p, '#f0607e', { w: .7, under: .45, seed: 13 }); GA = 1; }
+function sparkle(x, y, r, outline = true, a = 1) { const p = [0, -r, r * .22, -r * .22, r, 0, r * .22, r * .22, 0, r, -r * .22, r * .22, -r, 0, -r * .22, -r * .22]; GA = a; if (outline) shape(xform(p, x, y), '#f8d64a', { w: .7, under: .5, seed: 15 }); else solid(xform(p, x, y), '#fff'); GA = 1; }
+function note(x, y, a = 1) { GA = a; solid(ell(x, y, 7, 5, 12, -.4), INK); ink([x + 6, y - 2, x + 6, y - 30, x + 16, y - 22], false, .9); GA = 1; }
+function sweat(x, y, rot = 0) { shape(xform(cr([0, -11, 5, -2, 5, 3, 0, 6, -5, 3, -5, -2], true, 3), x, y, 1, rot), C.drop, { w: .6, under: .5, seed: 17 }); }
+function puff(x, y, p, s = 1) { if (p <= 0 || p >= 1) return; GA = 1 - p; for (let i = 0; i < 3; i++) ink(ell(x + (i - 1) * 16 * s * (1 + p), y - 8 * s - p * 10 * s - (i === 1 ? 6 * s : 0), (7 + 14 * p) * s, (6 + 11 * p) * s, 14), true, .7); GA = 1; }
+function speed(x, y, dir, n = 4, len = 80, seed = 0) { for (let i = 0; i < n; i++) { const r = h1(i * 31 + B * 7 + seed), yy = y - i * 26 + r * 8, L = len * (.6 + r * .6), xx = x - dir * (r * 20); ink([xx, yy, xx - dir * L, yy], false, .8, INK, .75); } }
+function burst(x, y, r, txt, sc = 1, a = 1) {
+  if (sc <= 0) return; ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); GA = a;
+  const p = []; for (let i = 0; i < 22; i++) { const ang = i / 22 * TAU, rr = (i % 2 ? .62 : 1) * r * (.9 + h1(i * 5 + 3) * .25); p.push(Math.cos(ang) * rr * 1.25, Math.sin(ang) * rr * .9); }
+  shape(p, '#f8d34a', { c2: C.sun2, seed: 19, under: .45 });
+  for (let i = 0; i < 8; i++) { const ang = i / 8 * TAU + .2; ink([Math.cos(ang) * r * 1.5, Math.sin(ang) * r * 1.1, Math.cos(ang) * r * 1.85, Math.sin(ang) * r * 1.35], false, 1); }
+  if (txt) { const sz = Math.min(r * .5, r * 1.9 / textWidth(txt, 1)); write(txt, 0, sz * .4, sz, { seed: 9 }); }
+  GA = 1; ctx.restore();
+}
+function exclaim(x, y, sc, ch = '!') { if (sc <= 0) return; ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); write(ch, 0, 34, 50, { w: 1.4 }); ink([-34, -40, -46, -56], false, 1); ink([34, -40, 46, -56], false, 1); ink([-40, -6, -56, -8], false, 1); ink([40, -6, 56, -8], false, 1); ctx.restore(); }
+function bulb(x, y, sc) {
+  if (sc <= 0) return; ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc);
+  for (let i = 0; i < 9; i++) { const a = -PI / 2 + (i - 4) * .36; crayLine([Math.cos(a) * 46, Math.sin(a) * 46 - 6, Math.cos(a) * 66, Math.sin(a) * 66 - 6], C.sun2, .8); }
+  shape(cr([-14, 22, -16, 10, -30, -8, -24, -32, 0, -42, 24, -32, 30, -8, 16, 10, 14, 22], true, 5), '#fbe066', { c2: C.sun2, seed: 25 });
+  shape([-14, 22, 14, 22, 12, 38, -12, 38], '#a9afb8', { seed: 26, w: .8 }); ink([-13, 28, 13, 28], false, .6); ink([-12, 33, 12, 33], false, .6);
+  ink([-6, 10, -4, -10, 0, -16, 4, -10, 6, 10], false, .6);
+  ctx.restore();
+}
+function rainCloud(x, y, t) { shape(cr([-56, 12, -66, -6, -50, -22, -30, -22, -18, -40, 6, -44, 22, -30, 40, -34, 58, -18, 66, 2, 52, 14], true, 5), '#8c95a6', { c2: '#5d6577', seed: 33, d: .9 }); for (let i = 0; i < 5; i++) { const p = (t * 1.6 + i / 5) % 1; ink([-36 + i * 18, 18 + p * 70, -38 + i * 18, 30 + p * 70], false, .6, '#4a6bd0', 1 - p); } }
+function hearts(x, y, u, t0, t1, rate, seed, size = 18) { for (let k = 0; ; k++) { const t = t0 + k / rate; if (t > Math.min(u, t1)) break; const p = (u - t) / 1.5; if (p > 0 && p < 1) heart(x + (h1(k + seed) - .5) * 110 + Math.sin(p * 6 + k) * 10, y - p * 130, size * (p < .15 ? p / .15 : 1) * (.8 + h1(k * 3 + seed) * .5), 1 - p * p); } }
+function drops(x, y, u, t0, t1, rate, seed) { for (let k = 0; ; k++) { const t = t0 + k / rate; if (t > Math.min(u, t1)) break; const p = (u - t) / .6; if (p > 0 && p < 1) { const sd = h1(k + seed) < .5 ? -1 : 1; sweat(x + sd * (30 + 40 * h1(k * 3 + seed)) * p, y - 60 * p + 110 * p * p, sd * .6 * p); } } }
+
+// ---------------------------------------------------------------- camera
+function cam(cx, cy, z) { ctx.translate(500, 500); ctx.scale(z, z); ctx.translate(-cx, -cy); }
+function nightSky(a) { const [x0, y0, x1, y1] = vrect(); crayon([x0, y0, x1, y0, x1, GY, x0, GY], C.night, { a: a, base: 0, under: .45, ang: -.35, d: .75, over: 0, seed: 91 }); }
+
+// ---------------------------------------------------------------- the film: shots
+const SHOTS = [
+  { // 1. a morning meadow. our hedgehog strolls along, humming, and smells something
+    d: 7.2, f(u) {
+      sky(500, u); cam(500, 470, 1); ground(flat, 1);
+      sign(820, GY, 'home >');
+      const x = kf(u, [[0, -140], [4.4, 420, 'l']]), walking = u < 4.4;
+      if (u > 3.6) for (let i = 0; i < 2; i++) { const ph = u * 2.2 + i * 2; const p = []; for (let k = 0; k <= 20; k++) { const xx = 1100 - k * (1100 - x - 125) / 20; p.push(xx, GY - 70 - i * 18 + Math.sin(k * .7 + ph * 3) * 8); } GA = ss(3.6, 4.6, u) * .7; crayLine(p, '#f2758f', .7); GA = 1; }
+      const sn = u > 4.7 ? Math.max(0, Math.sin((u - 4.7) * 15)) * .05 : 0;
+      hog({ x, y: GY, walk: walking ? x * .055 : null, eye: u > 4.9 && u < 6.6 ? 'closed' : 'open', mouth: u > 4.9 ? 'o' : 'smile', sy: 1 + sn, sx: 1 - sn * .5, rot: u > 4.8 ? -.07 : 0, lx: 1, arm: walking ? .35 + Math.sin(x * .055) * .4 : .3 });
+      for (let i = 0; i < 4; i++) { const t0 = .2 + i * 1.05, p = (u - t0) / 1.6; if (p > 0 && p < 1) note(x + 60 + p * 50 + i * 4, GY - 175 - p * 70, 1 - p); }
+      if (u > 4.8) for (let i = 0; i < 3; i++) { const p = ((u - 4.8) * 1.4 + i / 3) % 1; GA = 1 - p; ink([x + 140 + p * 30, GY - 105 - i * 12, x + 150 + p * 30, GY - 110 - i * 12, x + 160 + p * 30, GY - 104 - i * 12], false, .7); GA = 1; }
+    }
+  },
+  { // 2. close-up: sniff sniff ... !
+    d: 2.4, f(u) {
+      cam(560, 630, 2.5); ground(flat, 1);
+      const wide = u > 1.0;
+      const st = kf(u, [[1.0, 1], [1.1, 1.2, 'o'], [1.6, 1, 'el']]), sn = !wide ? Math.max(0, Math.sin(u * 15)) * .04 : 0;
+      if (!wide) for (let i = 0; i < 2; i++) { const p = []; for (let k = 0; k <= 16; k++) { const xx = 820 - k * (820 - 625) / 16; p.push(xx, GY - 75 - i * 10 + Math.sin(k * .8 + u * 9 + i) * 5); } GA = .7; crayLine(p, '#f2758f', .5); GA = 1; }
+      hog({ x: 500, y: GY, eye: wide ? 'wide' : 'closed', mouth: wide ? (u > 1.5 ? 'grin' : 'o') : 'o', sy: st + sn, sx: 2 - st - sn * .5, lx: 1, ly: -.2, blush: wide ? 1.5 : 1, arm: wide ? -2.5 : .3, rot: wide ? 0 : -.05 });
+      exclaim(560, GY - 220, kf(u, [[1.0, 0], [1.2, 1, 'b']]));
+      if (wide) { sparkle(640, GY - 150, 12 * kf(u, [[1.05, 0], [1.3, 1, 'b']])); sparkle(470, GY - 160, 9 * kf(u, [[1.15, 0], [1.4, 1, 'b']])); }
+    }
+  },
+  { // 3. there it is: one enormous strawberry. joy. a hug.
+    d: 7.2, f(u) {
+      sky(500, u + 7); cam(500, 470, 1); ground(flat, 2);
+      const wob = u > 4 && u < 6.2 ? Math.sin(u * 11) * .03 : 0;
+      shadow(780, GY, 150);
+      berry({ x: 780, y: GY - 142, r: 150, rot: wob });
+      tuft(700, GY, 1.2, 3); tuft(870, GY, 1.1, 4);
+      let x = kf(u, [[0, -160], [.55, 460, 'o']]);
+      if (u > 3.4) x = kf(u, [[3.4, 460], [4.0, 525, 'io'], [6.1, 525], [6.7, 470, 'io']]);
+      const [ax, ay] = air(u, 1.2, .55), [bx, by] = air(u, 1.9, .55), [lx1, ly1] = land(u, 1.75), [lx2, ly2] = land(u, 2.45), [lx0, ly0] = land(u, .55, .25);
+      const y = GY - hop(u, 1.2, .55, 70) - hop(u, 1.9, .55, 70);
+      const hug = u > 4 && u < 6.1, walk = (u > 3.4 && u < 4.0) || (u > 6.1 && u < 6.7);
+      if (u < .6) speed(x - 70, GY - 50, 1, 4, 110, 1);
+      puff(x - 20, GY, (u - .45) / .7, 1); puff(x - 60, GY, (u - .55) / .7, .8);
+      hog({ x, y, rot: kf(u, [[0, .16], [.55, .16], [.85, -.14, 'o'], [1.1, 0, 'o']]), sx: ax * bx * lx1 * lx2 * lx0, sy: ay * by * ly1 * ly2 * ly0,
+        eye: u < 1.1 ? 'wide' : hug ? 'happy' : u > 6.7 ? 'open' : 'happy', mouth: u < 1.1 ? 'o' : 'grin', blush: hug ? 1.9 : 1.2,
+        arm: hug ? -2.1 + Math.sin(u * 8) * .1 : (u > 1.1 && u < 2.6) ? -2.7 : .3, arm2: hug ? -2.3 : null, walk: walk ? x * .055 : null, lx: 1 });
+      hearts(x + 40, GY - 170, u, 1.2, 2.8, 3, 1); hearts(600, GY - 190, u, 4.2, 6.0, 3.3, 2);
+    }
+  },
+  { // 4. lift it! ... nope. plop.
+    d: 7.2, f(u) {
+      cam(590, 585, 1.45); ground(flat, 2);
+      const I = ss(1.2, 4.3, u) * (u < 4.5 ? 1 : 0);
+      const lift = u < 4.5 ? I * 5 * (.5 + .5 * Math.sin(u * 40)) : hop(u, 4.55, .3, 10);
+      shadow(720, GY, 150);
+      berry({ x: 720, y: GY - 142 - lift, r: 150, rot: -.04 * I });
+      if (I > .3) { GA = I; for (const s of [-1, 1]) { ink([720 + s * 170, GY - 220, 720 + s * 178, GY - 190], false, .8); ink([720 + s * 178, GY - 140, 720 + s * 186, GY - 110], false, .8); } GA = 1; }
+      let x = kf(u, [[0, 380], [.8, 468, 'io']]);
+      const shake = Math.sin(u * 95) * 2.4 * I;
+      let sy = kf(u, [[.8, 1], [1.2, .9, 'o'], [4.4, .8]]), sx = 2 - sy;
+      if (u > 4.5) { sy = kf(u, [[4.5, .78], [4.62, .38, 'o'], [6.6, .38], [7.0, 1, 'el']]); sx = kf(u, [[4.5, 1.2], [4.62, 1.75, 'o'], [6.6, 1.75], [7.0, 1, 'el']]); }
+      const flatd = u > 4.55 && u < 6.6;
+      hog({ x: x + shake, y: GY, sx, sy, walk: u < .8 ? x * .055 : null, eye: u < 1.2 ? 'open' : u < 4.5 ? 'strain' : flatd ? 'dizzy' : 'open',
+        mouth: u < 1.2 ? 'smile' : u < 4.5 ? 'strain' : flatd ? 'line' : 'o', red: I * .55, arm: u > .9 && u < 4.5 ? -2.55 : .4, arm2: u > .9 && u < 4.5 ? -2.4 : null, lx: 1, ly: -.4 });
+      drops(x + 40, GY - 140, u, 1.7, 4.4, 3, 4);
+      burst(x + 10, GY - 70, 50, 'plop', kf(u, [[4.55, 0], [4.7, 1, 'b'], [5.3, 1], [5.5, 0]]));
+      puff(x - 60, GY, (u - 4.55) / .7, 1.1); puff(x + 90, GY, (u - 4.6) / .7, 1.1);
+      if (flatd && u > 4.8) for (let i = 0; i < 3; i++) { const a = u * 5 + i * TAU / 3; sparkle(x + 30 + Math.cos(a) * 60, GY - 75 + Math.sin(a) * 14, 10); }
+      burst(x + 60, GY - 160, 34, 'pop', kf(u, [[6.6, 0], [6.75, 1, 'b'], [7.1, 1], [7.2, .6]]));
+    }
+  },
+  { // 5. hmm... ding!
+    d: 2.4, f(u) {
+      cam(560, 630, 2.4); ground(flat, 2);
+      const idea = u > 1.2, st = kf(u, [[1.2, 1], [1.3, 1.16, 'o'], [1.8, 1, 'el']]);
+      hog({ x: 500, y: GY, eye: idea ? 'wide' : 'open', mouth: idea ? 'grin' : 'line', lx: idea ? .6 : -.4, ly: idea ? -.2 : -1, arm: idea ? -2.6 : -2.05 + Math.sin(u * 10) * .08, sy: st, sx: 2 - st });
+      if (!idea) for (let i = 0; i < 3; i++) if (u > .2 + i * .3) { ink(ell(470 - i * 18, GY - 160 - i * 22, 4 + i * 2, 4 + i * 2, 10), true, .8); }
+      bulb(520, GY - 225, kf(u, [[1.2, 0], [1.4, 1, 'b']]));
+    }
+  },
+  { // 6. roll it! off we go
+    d: 7.2, f(u) {
+      const bx = u < 1 ? 330 + 90 * u * u : 420 + (u - 1) * 206;
+      sky(bx - 40, u + 14); cam(bx - 40, 470, 1); ground(flat, 3);
+      sign(1180, GY, 'home >');
+      shadow(bx, GY, 150);
+      berry({ x: bx, y: GY - 142, r: 150, rot: (bx - 330) / 150 });
+      const x = bx - 262;
+      if (u > .8) speed(x - 60, GY - 40, 1, 4, 90, 2);
+      for (let i = 0; i < 5; i++) puff(x - 40 - i * 40, GY, ((u * 1.6 + i * .2) % 1) * (u > .5 ? 1 : 0), .6);
+      hog({ x, y: GY, walk: x * .06, rot: .1, eye: 'happy', mouth: 'grin', arm: -1.75 + Math.sin(u * 12) * .1, arm2: -1.6, blush: 1.4 });
+      for (let i = 0; i < 5; i++) { const t0 = .6 + i * 1.3, p = (u - t0) / 1.6; if (p > 0 && p < 1) note(x + 30 + p * 40, GY - 180 - p * 70, 1 - p); }
+    }
+  },
+  { // 7. downhill: it gets away. bonk.
+    d: 7.2, f(u) {
+      const gy = x => GY + 230 * ss(650, 1350, x);
+      const cx = kf(u, [[0, 520], [1.6, 620], [4.6, 1080, 'io'], [7.2, 1130]]), cy = kf(u, [[0, 470], [1.6, 480], [4.6, 640, 'io'], [7.2, 650]]);
+      sky(cx, u + 21); cam(cx, cy, .95); ground(gy, 4);
+      rock(1440, gy(1440), 1);
+      let bx, by, rot;
+      if (u < 1.6) bx = 330 + (640 - 330) * u / 1.6; else if (u < 4.6) bx = 640 + (1270 - 640) * Math.pow((u - 1.6) / 3, 2); else bx = 1270;
+      rot = (bx - 330) / 150; by = gy(bx) - 142;
+      if (u >= 4.6) { const p = (u - 4.6) / .9; bx = 1270 - 120 * p; by = gy(1270) - 142 - 1500 * EASE.o(Math.min(1, p)) + 0; rot += (u - 4.6) * 9; }
+      if (u < 4.6) shadow(bx, gy(bx), 150);
+      if (u > 2 && u < 4.6) speed(bx - 150, by + 40, 1, 4, 120, 3);
+      if (u < 6) berry({ x: bx, y: by, r: 150, rot });
+      burst(1350, gy(1350) - 140, 60, 'bonk', kf(u, [[4.6, 0], [4.72, 1, 'b'], [5.3, 1], [5.5, 0]]));
+      let x, walk = null, eye = 'happy', mouth = 'grin', arm = -1.7, arm2 = -1.6, prot = .1, lx = .6, ly = 0;
+      if (u < 1.6) { x = bx - 262; walk = x * .06; }
+      else if (u < 2.1) { x = kf(u, [[1.6, 378], [2.1, 398, 'o']]); prot = kf(u, [[1.6, .1], [1.8, .38, 'o'], [2.1, .05]]); eye = u > 1.85 ? 'wide' : 'open'; mouth = 'o'; arm = -1.3; arm2 = -1.1; }
+      else if (u < 5.6) { x = kf(u, [[2.1, 398], [5.6, 1150, 'io']]); walk = x * .07; eye = 'wide'; mouth = 'o'; arm = -2.9 + Math.sin(u * 20) * .3; arm2 = -2.7 - Math.sin(u * 20) * .3; prot = Math.atan2(gy(x + 10) - gy(x - 10), 20) * .8 + .08; }
+      else { x = 1150; eye = u > 6.6 ? 'sad' : 'open'; mouth = u > 6.6 ? 'frown' : 'o'; arm = .3; arm2 = null; prot = Math.atan2(gy(x + 10) - gy(x - 10), 20) * .6; lx = u < 6.0 ? 1 : Math.sin((u - 6) * 7) > 0 ? 1 : -1; ly = u > 6.6 ? .8 : -.6; }
+      if (u > 2.3 && u < 5.5) speed(x - 70, gy(x) - 40, 1, 4, 100, 4);
+      hog({ x, y: gy(x), walk, eye, mouth, arm, arm2, rot: prot, lx, ly, blush: 1.2 });
+      exclaim(x + 40, gy(x) - 225, kf(u, [[1.85, 0], [2.0, 1, 'b'], [2.5, 1], [2.6, 0]]));
+      if (u > 2.3 && u < 5.5) drops(x + 30, gy(x) - 140, u, 2.3, 5.4, 3, 7);
+      if (u > 5.6) puff(x + 60, gy(x), (u - 5.55) / .6, 1);
+    }
+  },
+  { // 8. close-up: so sad... wait. what's that whistling?
+    d: 2.4, f(u) {
+      cam(560, 630, 2.4); ground(flat, 4);
+      const up = u > 1.0;
+      if (up) shadow(520, GY, kf(u, [[1.0, 30], [2.4, 200, 'q']]));
+      hog({ x: 500, y: GY, eye: up ? 'wide' : 'sad', mouth: up ? 'o' : 'frown', lx: up ? 0 : .4, ly: up ? -1 : .9, tear: up ? 0 : .1 + u * .9, arm: .2, blush: .8, shadow: !up });
+      if (!up) { ctx.save(); ctx.translate(545, GY - 215); rainCloud(0, 0, u); ctx.restore(); }
+      else { const p = (u - 1) / .4; if (p < 1) puff(545, GY - 200, p, 1.4); }
+    }
+  },
+  { // 9. thunk! — and it lands right on the spines. oh!
+    d: 4.8, f(u) {
+      sky(500, u + 33); cam(500, 450, 1); ground(flat, 5);
+      const x = 480, s = 1.3, R = 150, rl = R / s, landed = u >= .55;
+      const [sx, sy] = land(u, .55, .5);
+      let y = GY; const hs = [3.1, 3.7, 4.3]; for (const h of hs) y -= hop(u, h, .45, 46);
+      let ax = 1, ay = 1; for (const h of hs) { const [a, b] = air(u, h, .45), [c, d] = land(u, h + .45, .25); ax *= a * c; ay *= b * d; }
+      if (!landed) {
+        shadow(x - 18, GY, kf(u, [[0, 30], [.55, 150, 'i']]));
+        const p = u / .55, wy = (y - (90 + rl * .78) * s) - 1200 * (1 - p * p);
+        for (let i = 0; i < 4; i++) ink([x - 90 + i * 55, wy - 170 - i * 10, x - 90 + i * 55, wy - 260 - i * 10], false, .8, INK, .8);
+        berry({ x: x - 18, y: wy, r: R, rot: -.3 });
+      }
+      let eye = landed ? 'open' : 'wide', mouth = landed ? 'o' : 'o', lx = .6, ly = -1;
+      if (landed) { ly = 0; if ((u > 1.2 && u < 1.33) || (u > 1.5 && u < 1.63)) eye = 'closed'; if (u > 1.8 && u < 2.6) { lx = -1; ly = -.8; mouth = 'line'; } if (u > 2.6) { eye = u > 3.0 ? 'happy' : 'wide'; mouth = 'grin'; lx = .6; } }
+      hog({ x, y, sx: sx * ax, sy: sy * ay, carry: landed ? { r: R, rot: -.3 } : null, eye, mouth, lx, ly, arm: landed ? (u > 3 ? -2.7 : .4) : -2.8, arm2: !landed ? -2.6 : u > 3 ? -2.6 : null, blush: u > 2.6 ? 1.8 : 1 });
+      burst(x + 20, GY - 220, 58, 'thunk', kf(u, [[.55, 0], [.68, 1, 'b'], [1.2, 1], [1.4, 0]]));
+      if (landed && u < 1.2) for (let i = 0; i < 3; i++) { const a = u * 6 + i * TAU / 3; sparkle(x + Math.cos(a) * 110, GY - 300 + Math.sin(a) * 20, 9); }
+      exclaim(x + 150, GY - 190, kf(u, [[1.8, 0], [1.95, .8, 'b'], [2.55, .8], [2.6, 0]]), '?');
+      if (u > 2.6) { exclaim(x + 150, GY - 190, kf(u, [[2.6, 0], [2.75, .8, 'b'], [3.2, .8], [3.3, 0]])); for (let i = 0; i < 4; i++) sparkle(x - 160 + i * 100, GY - 380 + Math.sin(u * 5 + i) * 10 + (i % 2) * 70, 12 * kf(u, [[2.6 + i * .08, 0], [2.85 + i * .08, 1, 'b']])); }
+      hearts(x + 40, GY - 260, u, 3.1, 4.6, 3, 9);
+    }
+  },
+  { // 10. home we go, berry on our back. and who is that at the door?
+    d: 9.6, f(u) {
+      const x = kf(u, [[0, -80], [6.0, 1180, 'o']]);
+      const cxm = Math.min(x + 260, 1440);
+      sky(cxm, u + 38); cam(cxm, 470, 1); ground(flat, 6);
+      sign(1830, GY, 'home', 150, 70, .05);
+      stump(1640, GY, ss(6.0, 6.35, u), 0, u);
+      const walking = u < 5.9;
+      const hpp = [8.2, 8.9];
+      let y = GY; for (const h of hpp) y -= hop(u, h, .45, 40);
+      hog({ x, y, walk: walking ? x * .05 : null, carry: { r: 150, rot: -.3 + (walking ? Math.sin(x * .05) * .05 : 0) }, eye: u > 6.3 ? 'happy' : 'open', mouth: 'grin', arm: walking ? .35 + Math.sin(x * .05) * .4 : u > 8 ? -2.6 : .3, lx: 1 });
+      if (walking) for (let i = 0; i < 4; i++) { const t0 = .3 + i * 1.4, p = (u - t0) / 1.6; if (p > 0 && p < 1) note(x + 100 + p * 30, GY - 300 - p * 70, 1 - p); }
+      const tx = [1340, 1420, 1500];
+      for (let i = 0; i < 3; i++) {
+        const t0 = 6.4 + i * .45; if (u < t0) continue;
+        const p = clamp((u - t0) / .55, 0, 1), hx = lerp(1640, tx[i], p);
+        let hy = GY - Math.sin(p * PI) * 120;
+        const bob = [8.0 + i * .2, 8.7 + i * .2]; for (const b of bob) hy -= hop(u, b, .4, 30);
+        const [lsx, lsy] = land(u, t0 + .55, .4);
+        hog({ x: hx, y: hy, s: .55, dir: -1, spine: C.kid, seed: 50 + i * 7, eye: p < 1 ? 'wide' : 'happy', mouth: p < 1 ? 'o' : 'grin', sx: lsx, sy: lsy, arm: -2.6, blush: 1.6, lx: 1 });
+      }
+      hearts(1420, GY - 150, u, 7.4, 9.4, 3, 11);
+    }
+  },
+  { // 11. everyone gets some. nom nom nom
+    d: 7.2, f(u) {
+      cam(545, 590, 1.35); ground(flat, 7);
+      const ch = [.9, 1.9, 2.9, 3.9, 4.9], radii = [140, 116, 92, 68, 44, 0];
+      let n = 0; for (const c of ch) if (u >= c) n++;
+      const r = radii[n], pops = kf(u - (ch[n - 1] ?? -9), [[0, .85], [.3, 1, 'el']]);
+      const full = u > 5.2;
+      const lean = c => { let L = 0; for (const t of ch) if (u > t - .25 && u < t + .15) L = Math.sin((u - t + .25) / .4 * PI); return L * c; };
+      const chew = ch.some(t => u > t - .05 && u < t + .7);
+      // the third kid sits behind dad
+      hog({ x: 250, y: GY, s: .55, dir: 1, spine: C.kid, seed: 64, eye: chew || full ? 'happy' : 'open', mouth: chew ? 'chew' : 'grin', rot: lean(.2), blush: 1.6, sx: full ? 1.14 : 1, sy: full ? .95 : 1 });
+      if (r > 0) { shadow(545, GY, r); berry({ x: 545, y: GY - r * .95, r, sx: 2 - pops, sy: pops }); }
+      else { berry({ x: 545, y: GY + 76, r: 85, capOnly: true }); }
+      hog({ x: 330, y: GY, eye: chew || full ? 'happy' : 'open', mouth: chew ? 'chew' : 'grin', rot: lean(.18), blush: full ? 1.9 : 1.3, sx: full ? 1.13 : 1, sy: full ? .95 : 1, arm: full ? .9 + Math.sin(u * 9) * .35 : -1.6 });
+      const kids = [[730, 51], [820, 58]];
+      kids.forEach(([kx, sd], i) => hog({ x: kx, y: GY, s: .55, dir: -1, spine: C.kid, seed: sd, eye: chew || full ? 'happy' : 'open', mouth: chew ? 'chew' : 'grin', rot: -lean(.2), blush: 1.6, sx: full ? 1.14 : 1, sy: full ? .95 : 1, arm: -1.8 }));
+      ch.forEach((t, i) => {
+        const sc = kf(u, [[t, 0], [t + .15, 1, 'b'], [t + .6, 1], [t + .75, 0]]); if (sc > 0) { ctx.save(); ctx.translate(545 + (i % 2 ? 60 : -60), GY - 330 + i * 8); ctx.rotate((i % 2 ? .1 : -.1)); ctx.scale(sc, sc); write('nom', 0, 0, 40); ctx.restore(); }
+        for (let k = 0; k < 6; k++) { const p = (u - t) / .7; if (p > 0 && p < 1) { const a = -PI / 2 + (h1(k + i * 9) - .5) * 2.4, v = 160 + h1(k * 3 + i) * 120; solid(ell(545 + Math.cos(a) * v * p, GY - radii[i] + Math.sin(a) * v * p + 260 * p * p, 5, 4, 8), C.red, 1 - p); } }
+      });
+      if (full) hearts(540, GY - 170, u, 5.3, 7.2, 3.5, 13, 12);
+    }
+  },
+  { // 12. night. everyone asleep in a heap, under a strawberry-leaf blanket
+    d: 7.2, f(u) {
+      const z = kf(u, [[0, 1], [7.2, 1.2, 'io']]);
+      cam(500, 540, z);
+      nightSky(.85);
+      ground(flat, 8);
+      stump(880, GY, 0, 1, u);
+      const br = 1 + .03 * Math.sin(u * 2.2);
+      hog({ x: 400, y: GY, eye: 'closed', mouth: 'sleep', sy: .92 * br, sx: 1.08, arm: .6, blush: 1.2, lx: 1 });
+      const kx = [560, 625, 690];
+      kx.forEach((k, i) => hog({ x: k, y: GY, s: .55, dir: i === 1 ? 1 : -1, spine: C.kid, seed: 51 + i * 7, eye: 'closed', mouth: 'sleep', sy: 1 + .03 * Math.sin(u * 2.2 + i), blush: 1.2 }));
+      ctx.save(); ctx.translate(625, GY - 12); ctx.scale(1.45, .75); ctx.translate(0, 84); capDraw(); ctx.restore();
+      { const [x0, y0, x1, y1] = vrect(); ctx.fillStyle = 'rgba(40,52,120,.28)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
+      { const g = ctx.createRadialGradient(-50 + 880, -128 + GY, 5, 830, GY - 128, 110); g.addColorStop(0, 'rgba(255,215,110,.5)'); g.addColorStop(1, 'rgba(255,215,110,0)'); ctx.fillStyle = g; ctx.fillRect(700, GY - 260, 260, 260); }
+      shape(ell(780, 180, 52, 52, 26), '#fbe9a0', { c2: '#f3d36a', seed: 71, under: .55 });
+      ink(ell(765, 168, 10, 8, 12), true, .6, INK, .5); ink(ell(796, 196, 7, 6, 10), true, .6, INK, .5);
+      for (let i = 0; i < 16; i++) { const sx = h1(i * 3) * 1400 - 200, sy = h1(i * 7) * 420 + 20, tw = .6 + .4 * Math.sin(u * 3 + i * 2); sparkle(sx, sy, (8 + h1(i) * 8) * tw, true, .95); }
+      for (let i = 0; i < 5; i++) { const p = ((u * .35 + i / 5) % 1); GA = Math.sin(p * PI); write('z', 470 + p * 60 + Math.sin(p * 6) * 10, GY - 190 - p * 160, 18 + p * 22, { seed: i, col: '#f6f0dc' }); GA = 1; }
+      for (let i = 0; i < 6; i++) { const fx = 200 + h1(i * 11) * 700 + Math.sin(u * .8 + i) * 40, fy = GY - 80 - h1(i * 5) * 200 + Math.cos(u * 1.1 + i * 2) * 25, a = .5 + .5 * Math.sin(u * 4 + i * 3); const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, 18); g.addColorStop(0, `rgba(255,230,120,${.8 * a})`); g.addColorStop(1, 'rgba(255,230,120,0)'); ctx.fillStyle = g; ctx.fillRect(fx - 18, fy - 18, 36, 36); }
+    }
+  },
+  { // 13. title card
+    d: 4.8, f(u) {
+      cam(500, 500, 1);
+      write('one big berry', 500, 430, 64, { reveal: kf(u, [[.1, 0], [1.5, 1, 'l']]), seed: 4, w: 1.15 });
+      if (u > 1.5) { GA = ss(1.5, 1.9, u); crayLine([300, 466, 420, 474, 560, 462, 700, 470], C.ground, 1.3); GA = 1; }
+      if (u > 1.0) { GA = ss(1.0, 1.4, u); berry({ x: 545, y: 610, r: 62, rot: .2 }); hog({ x: 450, y: 676, s: .6, eye: 'closed', mouth: 'sleep', blush: 1.3, sy: 1 + .03 * Math.sin(u * 2.5), lx: 1 }); crayLine([340, 680, 660, 682], C.ground, .8); GA = 1; }
+      if (u > 2.0) write('the end', 500, 800, 34, { reveal: kf(u, [[2.0, 0], [2.7, 1, 'l']]), seed: 8 });
+    }
+  }
+];
+let acc = 0; for (const s of SHOTS) { s.t0 = acc; acc += s.d; }
+if (Math.abs(acc - LEN) > 1e-6) console.warn('shot lengths', acc);
+
+// ---------------------------------------------------------------- paper & frame
+function makePaper() {
+  const w = cv.width, h = cv.height;
+  paperC = document.createElement('canvas'); paperC.width = w; paperC.height = h;
+  const g = paperC.getContext('2d'), r = rng(5);
+  g.fillStyle = PAPER; g.fillRect(0, 0, w, h);
+  const S = 256, tc = document.createElement('canvas'); tc.width = tc.height = S;
+  const tg = tc.getContext('2d'), id = tg.createImageData(S, S);
+  for (let i = 0; i < S * S; i++) { const n = (r() - .5) * 20, sp = r() < .004 ? -40 : 0; id.data[i * 4] = 244 + n + sp; id.data[i * 4 + 1] = 239 + n + sp; id.data[i * 4 + 2] = 226 + n * 1.1 + sp; id.data[i * 4 + 3] = 255; }
+  tg.putImageData(id, 0, 0);
+  g.globalAlpha = .6; g.fillStyle = g.createPattern(tc, 'repeat'); g.fillRect(0, 0, w, h); g.globalAlpha = 1;
+  for (let k = 0; k < 40; k++) { const x = r() * w, y = r() * h, rad = (60 + r() * 220) * DPR, gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, 'rgba(160,130,90,.035)'); gr.addColorStop(1, 'rgba(160,130,90,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+  g.strokeStyle = 'rgba(140,120,90,.08)'; g.lineWidth = DPR * .8;
+  for (let k = 0; k < w * h / 9000; k++) { const x = r() * w, y = r() * h, a = r() * TAU, L = (6 + r() * 14) * DPR; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a + 1) * L * .5, y + Math.sin(a + 1) * L * .5, x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke(); }
+  const vg = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * .35, w / 2, h / 2, Math.max(w, h) * .78);
+  vg.addColorStop(0, 'rgba(120,95,60,0)'); vg.addColorStop(1, 'rgba(120,95,60,.16)'); g.fillStyle = vg; g.fillRect(0, 0, w, h);
+  // paper tooth: specks of paper that show through the crayon
+  const td = document.createElement('canvas'); td.width = td.height = S; const tt = td.getContext('2d'), ti = tt.createImageData(S, S);
+  for (let i = 0; i < S * S; i++) { const on = r() < .2; ti.data[i * 4] = 246; ti.data[i * 4 + 1] = 242; ti.data[i * 4 + 2] = 230; ti.data[i * 4 + 3] = on ? 90 + r() * 120 : 0; }
+  tt.putImageData(ti, 0, 0); toothPat = ctx.createPattern(td, 'repeat');
+}
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  VS = Math.min(W, H) / 1000; baseK = VS * DPR; makePaper();
+}
+addEventListener('resize', resize); resize();
+
+function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  ctx.drawImage(paperC, 0, 0);
+  let si = 0; while (si < SHOTS.length - 1 && T >= SHOTS[si].t0 + SHOTS[si].d) si++;
+  const sh = SHOTS[si], u = T - sh.t0;
+  ctx.setTransform(baseK, 0, 0, baseK, cv.width / 2 - 500 * baseK, cv.height / 2 - 500 * baseK);
+  ctx.save(); sh.f(u); ctx.restore();
+  GA = 1;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = .5; ctx.fillStyle = toothPat; ctx.fillRect(0, 0, cv.width, cv.height);
+  // fade from and to bare paper around the loop point
+  const fade = T < .5 ? 1 - T / .5 : T > LEN - .5 ? (T - (LEN - .5)) / .5 : 0;
+  if (fade > 0) { ctx.globalAlpha = fade; ctx.drawImage(paperC, 0, 0); }
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- clock (audio clock once sound is on)
+let audioOn = false, playing = true, muted = false;
+let base = ((parseFloat(q.get('t')) || (THUMB ? 9.9 : 0)) % LEN + LEN) % LEN, anchor = performance.now() / 1000;
+const clock = () => audioOn ? ac.currentTime : performance.now() / 1000;
+const curT = () => playing ? base + (clock() - anchor) : base;
+
+// ---------------------------------------------------------------- music & sound, all synthesized
+let ac = null, master, bus = null, revSend, NOISE, nextK = 0;
+const KS = {};
+const STEP = 60 / 100 / 4, NSTEPS = 512; // 100 bpm sixteenths, 32 bars = 76.8 s
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const SCALE = [0, 2, 4, 5, 7, 9, 11];
+const deg = (d, b) => b + 12 * Math.floor(d / 7) + SCALE[((d % 7) + 7) % 7];
+// [chord root as a degree of C major, style] for each of the 32 bars
+const BARS = [[0, 'walk'], [5, 'walk'], [3, 'walk'], [4, 'walk'], [0, 'happy'], [3, 'happy'], [4, 'happy'],
+  [1, 'tense'], [1, 'tense'], [2, 'tense'], [3, 'think'], [0, 'bouncy'], [3, 'bouncy'], [4, 'bouncy'],
+  [5, 'chase'], [2, 'chase'], [3, 'sad'], [1, 'sad'], [0, 'happy'], [4, 'happy'],
+  [0, 'march'], [3, 'march'], [4, 'march'], [0, 'march'], [3, 'warm'], [0, 'warm'], [4, 'warm'],
+  [0, 'lull'], [5, 'lull'], [3, 'lull'], [4, 'end'], [0, 'end2']];
+const ST = {
+  walk: { bass: [[0, 0], [8, 4]], strum: [4, 12], mel: [[0, 2], [2, 4], [4, 5], [6, 4], [8, 2], [12, 0]], mel2: [[0, 4], [3, 2], [6, 0], [8, 1], [10, 2], [12, 4]], wood: [0, 4, 8, 12], shaker: [2, 6, 10, 14] },
+  happy: { bass: [[0, 0], [6, 4], [8, 0], [14, 4]], strum: [2, 4, 10, 12], mel: [[0, 4], [2, 5], [4, 7], [8, 4], [10, 2], [12, 4]], mel2: [[0, 7], [2, 6], [4, 4], [6, 2], [8, 4], [12, 7]], shaker: [2, 6, 10, 14], kick: [0, 8] },
+  tense: { bass: [[0, 0], [12, 0]], mel: [[0, 0], [4, 1], [8, 2], [12, 3]], inst: 'pluck', tick: [0, 4, 8, 12], vol: .6 },
+  think: { pad: 1, mel: [[0, 4], [6, 2], [12, 0]], inst: 'box', vol: .7 },
+  bouncy: { bass: [[0, 0], [6, 4], [8, 0], [14, 4]], strum: [2, 6, 10, 14], mel: [[0, 0], [2, 2], [4, 4], [6, 7], [10, 4], [12, 5]], mel2: [[0, 4], [2, 2], [4, 0], [8, 2], [10, 4], [12, 7]], shaker: [2, 6, 10, 14], kick: [0, 8], wood: [4, 12] },
+  chase: { bass: [[0, 0], [2, 7], [4, 0], [6, 7], [8, 0], [10, 7], [12, 0], [14, 7]], strum: [2, 6, 10, 14], mel: [[0, 0], [1, 2], [2, 4], [4, 2], [6, 0], [8, 4], [9, 5], [10, 7], [12, 4]], kick: [0, 4, 8, 12], shaker: [2, 6, 10, 14], vol: .9 },
+  sad: { bass: [[0, 0]], mel: [[0, 4], [6, 3], [12, 2]], inst: 'box', strum: [0], vol: .6 },
+  march: { bass: [[0, 0], [4, 4], [8, 0], [12, 4]], strum: [2, 6, 10, 14], mel: [[0, 4], [2, 4], [4, 5], [6, 7], [8, 7], [10, 5], [12, 4], [14, 2]], mel2: [[0, 0], [4, 2], [6, 4], [8, 2], [12, 0]], kick: [0, 8], wood: [4, 12], shaker: [2, 6, 10, 14] },
+  warm: { bass: [[0, 0], [8, 4]], strum: [0, 6, 8, 12], mel: [[0, 2], [4, 4], [8, 5], [12, 4]], mel2: [[0, 4], [6, 2], [8, 0]], shaker: [6, 14], vol: .85 },
+  lull: { bass: [[0, 0]], mel: [[0, 0], [4, 2], [8, 4], [12, 2]], mel2: [[0, 4], [4, 2], [8, 7], [12, 4]], inst: 'box', vol: .6 },
+  end: { bass: [[0, 0]], mel: [[0, 0], [3, 2], [6, 4], [9, 7], [12, 9]], inst: 'box', vol: .6 },
+  end2: { bass: [[0, 0]], strum: [0], mel: [[0, 7]], inst: 'box', vol: .6 }
+};
+function makeIR(sec) { const sr = ac.sampleRate, len = Math.floor(sr * sec), b = ac.createBuffer(2, len, sr); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); } return b; }
+function initAudio() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.connect(ac.destination);
+  master = ac.createGain(); master.gain.value = muted ? 0 : .7; master.connect(comp);
+  const rv = ac.createConvolver(); rv.buffer = makeIR(1.6); rv.connect(master);
+  revSend = ac.createGain(); revSend.gain.value = .22; revSend.connect(rv);
+  NOISE = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const nd = NOISE.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+}
+function newBus() {
+  if (bus) { const old = bus; old.gain.setTargetAtTime(0, ac.currentTime, .03); setTimeout(() => old.disconnect(), 500); }
+  bus = ac.createGain(); bus.connect(master); bus.connect(revSend);
+}
+function vca(t, a, peak, d, dest = bus) { const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + a + d); g.connect(dest); return g; }
+function osc(type, f, t, dur, dest) { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.connect(dest); o.start(t); o.stop(t + dur + .05); return o; }
+function noise(t, dur, dest) { const s = ac.createBufferSource(); s.buffer = NOISE; s.loop = true; s.connect(dest); s.start(t, Math.random() * .5); s.stop(t + dur + .05); return s; }
+function filt(type, f, Q, dest) { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = Q; b.connect(dest); return b; }
+function ksBuf(m) { // karplus-strong pluck, computed once per note
+  if (KS[m]) return KS[m];
+  const sr = ac.sampleRate, N = Math.max(2, Math.round(sr / mtof(m))), len = Math.floor(sr * 1.5), buf = ac.createBuffer(1, len, sr), d = buf.getChannelData(0), ring = new Float32Array(N);
+  let prev = 0; for (let i = 0; i < N; i++) { prev = prev * .45 + (Math.random() * 2 - 1) * .55; ring[i] = prev; }
+  let idx = 0; for (let i = 0; i < len; i++) { const nx = (idx + 1) % N; d[i] = ring[idx]; ring[idx] = (ring[idx] + ring[nx]) * .5 * .996; idx = nx; }
+  for (let i = len - 3000; i < len; i++) d[i] *= (len - i) / 3000;
+  return KS[m] = buf;
+}
+function pluck(t, m, v) { const s = ac.createBufferSource(); s.buffer = ksBuf(m); const g = ac.createGain(); g.gain.value = v; s.connect(filt('lowpass', 3400, .5, g)); g.connect(bus); s.start(t); }
+function marimba(t, m, v) { const f = mtof(m); osc('sine', f, t, .7, vca(t, .004, v, .6)); osc('sine', f * 4, t, .15, vca(t, .002, v * .25, .09)); osc('triangle', f * 2, t, .1, vca(t, .002, v * .12, .05)); }
+function box(t, m, v) { const f = mtof(m); osc('sine', f, t, 1.6, vca(t, .003, v, 1.4)); osc('sine', f * 3, t, .5, vca(t, .002, v * .12, .35)); osc('sine', f * 5.4, t, .2, vca(t, .001, v * .05, .12)); }
+function bass(t, m, v) { osc('triangle', mtof(m), t, .6, filt('lowpass', 650, .7, vca(t, .012, v, .5))); osc('sine', mtof(m), t, .6, vca(t, .01, v * .6, .45)); }
+function shaker(t, v) { noise(t, .08, filt('highpass', 6500, .7, vca(t, .004, v, .05))); }
+function kick(t, v) { const g = vca(t, .003, v, .22), o = osc('sine', 140, t, .3, g); o.frequency.exponentialRampToValueAtTime(48, t + .12); }
+function wood(t, v, hi) { osc('sine', hi ? 1250 : 880, t, .08, vca(t, .001, v, .05)); noise(t, .02, filt('bandpass', 2500, 2, vca(t, .001, v * .4, .015))); }
+function pad(t, ms, d, v) { for (const m of ms) { const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + .4); g.gain.linearRampToValueAtTime(0, t + d); g.connect(bus); osc('sine', mtof(m), t, d, g); osc('triangle', mtof(m) * 1.003, t, d, filt('lowpass', 900, .5, g)); } }
+function music(s, t) {
+  const bar = s >> 4, st = s & 15, [root, sty] = BARS[bar], S = ST[sty], v = S.vol ?? 1;
+  if (S.bass) for (const [p, d] of S.bass) if (p === st) { let m = deg(root + d, 48); while (m > 55) m -= 12; bass(t, m, .42 * v); }
+  if (S.strum && S.strum.includes(st)) [0, 2, 4].forEach((d, i) => { let m = deg(root + d, 60); while (m > 71) m -= 12; pluck(t + i * .016, m, (st % 4 ? .13 : .18) * v); });
+  const mel = (bar & 1) && S.mel2 ? S.mel2 : S.mel;
+  if (mel) for (const [p, d] of mel) if (p === st) {
+    if (S.inst === 'box') { let m = deg(root + d, 84); while (m > 96) m -= 12; box(t, m, .16 * v); }
+    else if (S.inst === 'pluck') { let m = deg(root + d, 60); while (m > 74) m -= 12; pluck(t, m, .3 * v); }
+    else { let m = deg(root + d, 72); while (m > 84) m -= 12; marimba(t, m, .22 * v); }
+  }
+  if (S.shaker && S.shaker.includes(st)) shaker(t, .05 * v);
+  if (S.kick && S.kick.includes(st)) kick(t, .45 * v);
+  if (S.wood && S.wood.includes(st)) wood(t, .08 * v, st % 8 === 0);
+  if (S.tick && S.tick.includes(st)) wood(t, .05, true);
+  if (S.pad && st === 0) pad(t, [0, 2, 4].map(d => deg(root + d, 60)), 2.4, .05);
+}
+// sound effects
+function sweep(p, t, a, b, d) { p.setValueAtTime(a, t); p.exponentialRampToValueAtTime(b, t + d); }
+const FX = {
+  pat: t => noise(t, .04, filt('lowpass', 700, .7, vca(t, .003, .1, .035))),
+  sniff: t => { const f = filt('bandpass', 1500, 3, vca(t, .03, .14, .1)); sweep(f.frequency, t, 1500, 3800, .13); noise(t, .16, f); },
+  pop: (t, p = 1) => { const o = osc('sine', 380 * p, t, .1, vca(t, .002, .22, .08)); sweep(o.frequency, t, 380 * p, 950 * p, .07); },
+  ding: t => [1568, 2093, 3136].forEach((f, i) => osc('sine', f, t, 1.3, vca(t, .002, [.18, .09, .05][i], 1.2))),
+  whoosh: t => { const f = filt('bandpass', 400, 1.2, vca(t, .15, .2, .3)); sweep(f.frequency, t, 300, 2400, .4); noise(t, .5, f); },
+  skid: t => { const f = filt('bandpass', 1800, 2, vca(t, .02, .16, .32)); sweep(f.frequency, t, 1800, 500, .35); noise(t, .4, f); },
+  boing: (t, p = 1) => { const g = vca(t, .005, .2, .32), o = osc('triangle', 180 * p, t, .4, g); sweep(o.frequency, t, 170 * p, 460 * p, .22); const l = osc('sine', 28, t, .4, ac.createGain()); const lg = ac.createGain(); lg.gain.value = 25 * p; l.disconnect(); l.connect(lg); lg.connect(o.frequency); },
+  kiss: t => { const o = osc('sine', 1400, t, .1, vca(t, .003, .1, .06)); sweep(o.frequency, t, 1400, 2600, .06); },
+  strain: (t, d) => { const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.05, t + .3); g.gain.setValueAtTime(.05, t + d - .05); g.gain.linearRampToValueAtTime(0, t + d); g.connect(bus); const o = osc('sawtooth', 160, t, d, filt('lowpass', 900, 1, g)); o.frequency.linearRampToValueAtTime(320, t + d); const l = ac.createOscillator(); l.frequency.value = 13; const lg = ac.createGain(); lg.gain.value = 9; l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + d); },
+  plop: t => { const o = osc('sine', 260, t, .4, vca(t, .003, .45, .32)); sweep(o.frequency, t, 260, 55, .28); noise(t, .15, filt('lowpass', 300, .7, vca(t, .002, .3, .12))); },
+  tweet: t => { for (let i = 0; i < 3; i++) { const o = osc('sine', 2600, t + i * .09, .07, vca(t + i * .09, .004, .05, .05)); sweep(o.frequency, t + i * .09, 2600, 3500, .05); } },
+  rumble: (t, d, v = .08) => { const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + .25); g.gain.setValueAtTime(v, t + d - .3); g.gain.linearRampToValueAtTime(0, t + d); g.connect(bus); noise(t, d, filt('lowpass', 170, .8, g)); },
+  slideDown: t => { const o = osc('sine', 950, t, .6, vca(t, .01, .14, .55)); sweep(o.frequency, t, 950, 240, .55); },
+  slideUp: (t, d = .6) => { const o = osc('sine', 300, t, d, vca(t, .01, .12, d)); sweep(o.frequency, t, 300, 1500, d); },
+  bonk: t => { const o = osc('sine', 600, t, .2, vca(t, .001, .35, .14)); sweep(o.frequency, t, 600, 320, .14); const o2 = osc('triangle', 180, t, .25, vca(t, .001, .3, .2)); sweep(o2.frequency, t, 180, 90, .2); noise(t, .04, filt('bandpass', 2000, 1.5, vca(t, .001, .2, .03))); },
+  fall: (t, d) => { const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.08, t + .3); g.gain.setValueAtTime(.08, t + d - .05); g.gain.linearRampToValueAtTime(0, t + d); g.connect(bus); const o = osc('sine', 2200, t, d, g); sweep(o.frequency, t, 2200, 520, d); },
+  wah: t => { [58, 57, 56, 55].forEach((m, i) => { const tt = t + i * .36, d = i === 3 ? .9 : .32, g = vca(tt, .03, .07, d); osc('sawtooth', mtof(m - 12), tt, d, filt('lowpass', 1100, 2, g)); }); },
+  thunk: t => { const o = osc('sine', 170, t, .4, vca(t, .002, .5, .3)); sweep(o.frequency, t, 170, 45, .3); noise(t, .12, filt('lowpass', 400, .7, vca(t, .002, .3, .1))); },
+  sparkle: t => [84, 88, 91, 96].forEach((m, i) => box(t + i * .06, m, .07)),
+  creak: t => { const g = vca(t, .05, .06, .5), o = osc('sawtooth', 70, t, .6, filt('bandpass', 900, 4, g)); const l = ac.createOscillator(); l.frequency.value = 9; const lg = ac.createGain(); lg.gain.value = 25; l.connect(lg); lg.connect(o.frequency); l.start(t); l.stop(t + .6); },
+  nom: t => { for (const d of [0, .1]) noise(t + d, .06, filt('bandpass', 1100, 1, vca(t + d, .002, .2, .05))); FX.pop(t + .02, .7); },
+  cricket: t => { for (let s = 0; s < 2; s++) for (let i = 0; i < 3; i++) { const tt = t + s * .3 + i * .055; osc('sine', 4300, tt, .05, vca(tt, .004, .025, .035)); } },
+  chime: t => [72, 76, 79, 84, 88].forEach((m, i) => box(t + i * .12, m, .14))
+};
+// the sound track's cue sheet, in timeline seconds
+const SFX = [];
+{
+  const add = (t, n, ...a) => SFX.push([t, n, a]);
+  for (let t = .2; t < 4.4; t += .4) add(t, 'pat');
+  [4.95, 5.35, 5.75, 6.4, 6.8, 7.35, 7.65, 7.95].forEach(t => add(t, 'sniff'));
+  add(8.2, 'pop'); add(8.22, 'slideUp', .35); add(8.4, 'sparkle');
+  add(9.6, 'whoosh'); add(10.15, 'skid'); add(10.8, 'boing'); add(11.5, 'boing', 1.12); add(13.7, 'kiss'); add(14.3, 'kiss'); add(14.0, 'sparkle');
+  for (let t = 16.9; t < 17.6; t += .3) add(t, 'pat');
+  add(18.0, 'strain', 3.3); add(21.33, 'plop'); add(21.7, 'tweet'); add(22.4, 'tweet'); add(23.1, 'tweet'); add(23.42, 'pop', 1.2);
+  add(25.2, 'ding'); add(25.3, 'sparkle');
+  add(26.7, 'whoosh'); add(26.5, 'rumble', 7, .07); for (let t = 26.6; t < 33.5; t += .3) add(t, 'pat');
+  add(33.6, 'rumble', 1.7, .07); add(35.25, 'slideDown'); add(35.2, 'rumble', 3, .11); for (let t = 35.7; t < 39.1; t += .18) add(t, 'pat');
+  add(38.2, 'bonk'); add(38.25, 'slideUp', .9); add(40.0, 'wah');
+  add(41.7, 'fall', 2.05); add(43.75, 'thunk'); add(43.8, 'boing', .8); add(45.8, 'sparkle'); add(46.3, 'boing'); add(46.9, 'boing', 1.1); add(47.5, 'boing', 1.2);
+  for (let t = 48.2; t < 53.8; t += .36) add(t, 'pat');
+  add(54.0, 'creak'); add(54.4, 'pop', 1.2); add(54.85, 'pop', 1.35); add(55.3, 'pop', 1.5); add(56.0, 'sparkle'); add(56.2, 'boing', 1.3); add(56.9, 'boing', 1.4);
+  [58.5, 59.5, 60.5, 61.5, 62.5].forEach(t => add(t, 'nom')); add(62.9, 'sparkle');
+  [65.5, 67.0, 68.6, 70.2].forEach(t => add(t, 'cricket'));
+  add(72.1, 'chime');
+}
+const SFXB = Array.from({ length: NSTEPS }, () => []);
+for (const e of SFX) SFXB[Math.floor(e[0] / STEP) % NSTEPS].push(e);
+
+function startSchedule() { newBus(); nextK = Math.ceil(curT() / STEP - 1e-6); }
+function tick() {
+  if (!audioOn || !playing) return;
+  const now = ac.currentTime, tNow = curT();
+  if (nextK * STEP < tNow - .5) nextK = Math.ceil(tNow / STEP); // fell behind (hidden tab): skip ahead
+  while (nextK * STEP < tNow + .25) {
+    const tt = nextK * STEP, when = now + (tt - tNow), s = ((nextK % NSTEPS) + NSTEPS) % NSTEPS;
+    if (when >= now - .02) {
+      const w = Math.max(now, when);
+      music(s, w);
+      for (const [te, n, a] of SFXB[s]) FX[n](w + (te - s * STEP), ...a);
+    }
+    nextK++;
+  }
+}
+setInterval(tick, 40);
+
+// ---------------------------------------------------------------- controls
+function ui() { uiEl.textContent = (!playing ? 'paused · space to play' : '') + (muted && audioOn ? (playing ? '' : ' · ') + 'muted' : ''); }
+function startAudio() {
+  const t = curT();
+  initAudio(); ac.resume();
+  audioOn = true; base = t; anchor = ac.currentTime;
+  startSchedule(); hintEl.style.opacity = 0; ui();
+}
+function togglePause() {
+  if (playing) { base = curT(); playing = false; if (bus) { bus.gain.setTargetAtTime(0, ac.currentTime, .03); } }
+  else { anchor = clock(); playing = true; if (audioOn) startSchedule(); }
+  ui();
+}
+function seek(d) {
+  base = ((curT() + d) % LEN + LEN) % LEN; anchor = clock();
+  if (audioOn && playing) startSchedule();
+}
+if (!THUMB) {
+  cv.addEventListener('pointerdown', () => { if (!audioOn) startAudio(); else togglePause(); });
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); if (!audioOn) startAudio(); else togglePause(); }
+    else if (e.code === 'ArrowLeft') seek(-5);
+    else if (e.code === 'ArrowRight') seek(5);
+    else if (e.code === 'KeyM') { muted = !muted; if (master) master.gain.setTargetAtTime(muted ? 0 : .7, ac.currentTime, .02); ui(); }
+  });
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  tick();
+  const t = curT();
+  T = ((t % LEN) + LEN) % LEN; B = Math.floor(T * 8);
+  draw();
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
