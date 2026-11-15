@@ -34,7 +34,7 @@
     <label>how old? (candles)<input id="fage" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="leave empty for five"></label>
     <div class="row"><button id="show">show it</button><button id="copy">share it</button></div>
   </div>
-  <div id="bar"><button id="make">make one for someone</button><button id="share">share this card</button><button id="snd">sound: on</button></div>
+  <div id="bar"><button id="make">make and share one for someone</button><button id="snd">sound: on</button></div>
   <div id="said"></div><input id="out" readonly aria-label="link to this card">
 </div>
 <script>
@@ -539,7 +539,6 @@ $('fname').value = NAME; if (AGE) $('fage').value = AGE;
 $('make').onclick = () => { $('said').classList.remove('on'); $('out').classList.remove('on'); panel.classList.toggle('on'); if (panel.classList.contains('on')) $('fname').focus(); };
 $('show').onclick = () => { location.href = link(); };
 $('copy').onclick = async () => { const m = await share(link()); panel.classList.remove('on'); tell(m); };
-$('share').onclick = async () => tell(await share(cardUrl(NAME, AGE)));
 $('snd').onclick = () => { muted = !muted; $('snd').textContent = 'sound: ' + (muted ? 'off' : 'on'); if (master) master.gain.value = muted ? 0 : .5; };
 panel.addEventListener('keydown', e => { if (e.key === 'Enter') location.href = link(); e.stopPropagation(); });
 addEventListener('keydown', e => { if (e.key === 'm' || e.key === 'M') $('snd').click(); });

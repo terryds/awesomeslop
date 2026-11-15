@@ -2,7 +2,7 @@
 
 A birthday card. A cake draws itself in pastel in a dark room. Click to light the candles and a music box plays; make a wish; click again to blow them out.
 
-**To send one:** open "make one for someone" in the bottom left corner, type a name and an age, and press "share it". It copies the link, ready to paste into a message. "share this card" does the same for the card you are looking at. Or write it by hand: `?name=Ada&age=7`. Up to ten, you get that many candles. After that you get number candles.
+**To send one:** open "make and share one for someone" in the bottom left corner, type a name and an age, and press "share it". It copies the link, ready to paste into a message. Or write it by hand: `?name=Ada&age=7`. Up to ten, you get that many candles. After that you get number candles.
 
 **Sound:** the tune starts with the click that lights the candles. M turns it off.
 
