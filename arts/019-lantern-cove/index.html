@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lantern cove</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #2a2118; overflow: hidden; }
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #2a2118; cursor: pointer; }
+  #hint {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em;
+    color: #fff3d2; background: rgba(42, 33, 24, .66); padding: 9px 13px; border-radius: 999px;
+    pointer-events: none; transition: opacity .5s; white-space: nowrap;
+  }
+  #hint.off { opacity: 0; }
+</style>
+</head>
+<body>
+<video id="v" src="lantern-cove.mp4" poster="poster.jpg" autoplay muted loop playsinline preload="auto"></video>
+<div id="hint">click to pause</div>
+<script>
+const v = document.getElementById('v'), hint = document.getElementById('hint');
+const qs = new URLSearchParams(location.search), THUMB = qs.has('thumb');
+if (THUMB) hint.remove();
+if (qs.has('t')) v.addEventListener('loadedmetadata', () => { v.currentTime = +qs.get('t') || 0; }, { once: true });
+function toggle() {
+  if (THUMB) return;
+  hint.classList.add('off');
+  v.paused ? v.play() : v.pause();
+}
+v.addEventListener('click', toggle);
+addEventListener('keydown', (e) => {
+  if (THUMB) return;
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  else if (e.key === 'ArrowRight') v.currentTime = Math.min(v.duration - 0.1, v.currentTime + 5);
+  else if (e.key === 'ArrowLeft') v.currentTime = Math.max(0, v.currentTime - 5);
+});
+</script>
+</body>
+</html>

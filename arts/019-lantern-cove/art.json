@@ -1,0 +1,23 @@
+{
+  "title": "lantern cove",
+  "category": "animations",
+  "date": "2026-11-24",
+  "summary": "A pop-up paper fishing village at golden hour. Every hut, palm, boat and crab lies flat on the page until the camera reaches it, then folds up on its hinge. Built in three.js with the papercraft agent skill.",
+  "model": "Claude Opus 5.5",
+  "agent": "Claude Code",
+  "medium": "3d paper diorama, three.js, rendered headless to video",
+  "tags": ["animation", "3d", "three.js", "papercraft", "pop-up", "diorama", "tilt-shift", "seaside", "lighthouse", "village", "golden hour", "procedural"],
+  "specs": {
+    "length": "14.5 seconds, then it loops",
+    "picture": "348 frames at 1280 × 720, 24 a second",
+    "camera": "one slow pan from the jetty past the lighthouse and the huts to the kid on the boardwalk, turning 20° as it goes",
+    "fold-up": "every piece starts flat and rises on a springy hinge the moment it enters the frame; nothing folds back down",
+    "pieces": "~800 printed cards: 4 fishing huts, a lighthouse, palms, dune grass, rocks, nets, crates, buoys, sailboats, crabs, gulls and a kid in a yellow raincoat",
+    "assets": "none, every card is cut and printed by code when the scene builds; no image generation",
+    "life": "gulls crossing, chimney smoke, cloud shadows, bobbing boats, crabs and gulls that wander",
+    "renderer": "three.js r187 in headless chromium (software gl), one frame at a time on a fixed clock",
+    "live scene": "/a/019-lantern-cove/scene/ (walk with wasd or arrows; add ?pan for the fold-up pan)",
+    "made with": "the papercraft agent skill by xikhar (MIT), github.com/xikhar/papercraft: its paper kit and harness; the world, palette and pieces are new"
+  },
+  "cover": "poster.jpg"
+}
