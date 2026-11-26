@@ -21,7 +21,8 @@
     "length": "10 seconds",
     "picture": "480 × 854, 24 a second, with sound",
     "prompt": "about 27,000 characters, timed second by second in 11 beats: gaze, blinks and a slow eye closure, the profile turn at 5.75 s and the turn back at 8.21 s, then a negative prompt of things to avoid",
-    "input": "the prompt asks the model to keep the face from a first-frame reference image"
+    "input": "the prompt asks the model to keep the face from a first-frame reference image",
+    "original chat": "share.gemini.google/MZIfpF044Ivm"
   },
   "cover": "cover.jpg",
   "video": "close-up-portrait.mp4"

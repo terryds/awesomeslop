@@ -6,7 +6,7 @@ The video plays muted; use its controls for sound.
 
 ## how it was made
 
-A single prompt to Veo in the Gemini app. Unlike the other pieces here, there is no code: the clip comes straight from the video model.
+A single prompt to Veo in the Gemini app. Unlike the other pieces here, there is no code: the clip comes straight from the video model. The original Gemini chat is shared here: [share.gemini.google/MZIfpF044Ivm](https://share.gemini.google/MZIfpF044Ivm).
 
 The prompt is unusually long, about 27,000 characters, and reads like a shot list for a performance:
 
