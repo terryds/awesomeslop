@@ -1,0 +1,17 @@
+{
+  "title": "window light",
+  "category": "ai-video",
+  "date": "2026-11-26",
+  "summary": "A ten-second extreme close-up of a woman by a window on an overcast day: she glances right, blinks, turns slowly into profile and back. Every blink, eye movement and strand of hair is scripted to the second in the prompt.",
+  "model": "Veo (Gemini app)",
+  "medium": "generated video, vertical 9:16",
+  "tags": ["video", "veo", "gemini", "photoreal", "portrait", "close-up", "face", "window light", "vertical", "timed prompt"],
+  "specs": {
+    "length": "10 seconds",
+    "picture": "480 × 854, 24 a second, with sound",
+    "prompt": "about 20,000 characters, timed second by second: gaze, three blinks, the profile turn at 5.75 s and the turn back at 8.21 s",
+    "input": "the prompt asks the model to keep the face from a first-frame reference image"
+  },
+  "cover": "cover.jpg",
+  "video": "window-light.mp4"
+}

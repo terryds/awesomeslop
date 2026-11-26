@@ -28,6 +28,7 @@ Create a folder in `arts/`. The folder name is the URL (`arts/004-my-piece` -> `
 | `prompt.md`  | the one prompt that made it                                           |
 | `README.md`  | notes about the piece (markdown)                                      |
 | `index.html` | the piece itself, if it is a live/animated one                        |
+| a video      | for clips made by a video model (Veo, Sora…): name the file in `"video"`, plus a `"cover"` still; the page plays it directly and `agent` can be left out |
 | an image     | for image art: put the file in the folder and name it in `"cover"`    |
 
 ```json

@@ -4,7 +4,7 @@
 //   public/a/<slug>/          the art's own files (index.html, images, ...)
 //
 // One art = one folder:
-//   art.json    { title, category, date, model, agent, medium, tags, summary, specs, cover }
+//   art.json    { title, category, date, model, agent, medium, tags, summary, specs, cover, video }
 //   prompt.md   the one prompt that made it
 //   README.md   notes about the piece
 //   index.html  a live piece (optional)   -or-   an image named in art.json "cover"
@@ -54,6 +54,10 @@ for (const entry of entries) {
   if (meta.category && !categoryIds.has(meta.category)) fail(slug, `unknown category "${meta.category}" (known: ${[...categoryIds].join(', ')})`);
 
   const hasLive = existsSync(path.join(dir, 'index.html'));
+  // A video piece (made by a video model, not code): art.json names the file in "video" and needs a "cover" still.
+  if (meta.video && !existsSync(path.join(dir, meta.video))) fail(slug, `video "${meta.video}" not found`);
+  if (meta.video && !meta.cover) fail(slug, 'a "video" art needs a "cover" still for the gallery');
+  const kind = meta.video ? 'video' : hasLive ? 'live' : 'image';
   if (meta.cover && !existsSync(path.join(dir, meta.cover))) fail(slug, `cover "${meta.cover}" not found`);
   if (!hasLive && !meta.cover) fail(slug, 'needs an index.html (live piece) or a "cover" image in art.json');
 
@@ -74,12 +78,12 @@ for (const entry of entries) {
     summary: meta.summary ?? '',
     model: meta.model ?? null,
     agent: meta.agent ?? null,
-    medium: meta.medium ?? (hasLive ? 'html' : 'image'),
+    medium: meta.medium ?? (kind === 'live' ? 'html' : kind),
     tags: meta.tags ?? [],
     specs: meta.specs ?? {},
     featured: meta.featured === true,
-    kind: hasLive ? 'live' : 'image',
-    src: hasLive ? `/a/${slug}/` : `/a/${slug}/${meta.cover}`,
+    kind,
+    src: kind === 'video' ? `/a/${slug}/${meta.video}` : kind === 'live' ? `/a/${slug}/` : `/a/${slug}/${meta.cover}`,
     cover: meta.cover ? `/a/${slug}/${meta.cover}` : null,
     prompt,
     readmeHtml: readme ? await marked.parse(readme) : '',
