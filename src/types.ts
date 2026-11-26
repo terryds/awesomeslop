@@ -25,7 +25,7 @@ export type Art = {
   tags: string[];
   specs: Record<string, string>;
   featured: boolean;
-  kind: 'live' | 'image';
+  kind: 'live' | 'image' | 'video';
   src: string;
   cover: string | null;
   prompt: string;

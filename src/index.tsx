@@ -25,6 +25,10 @@ function Preview({ art, thumb, eager }: { art: Art; thumb?: boolean; eager?: boo
   if (art.kind === 'image' || (thumb && art.cover)) {
     return <img src={art.cover ?? art.src} alt={art.title} loading={thumb && !eager ? 'lazy' : undefined} />;
   }
+  // A video piece plays the file itself: muted so it can autoplay, with controls for sound and seeking.
+  if (art.kind === 'video') {
+    return <video src={art.src} poster={art.cover ?? undefined} title={art.title} controls autoplay muted loop playsinline preload="metadata"></video>;
+  }
   // Art runs sandboxed: scripts allowed, but no access to this site's cookies or DOM.
   return (
     <iframe
@@ -280,8 +284,8 @@ app.get('/art/:slug', (c) => {
             <a href={art.src} target="_blank" rel="noopener" class="btn btn-lg btn-accent" data-play="#stage">
               ▶ {art.category === 'game-scenes' ? 'play the game' : art.kind === 'image' ? 'view fullscreen' : 'play fullscreen'}
             </a>
-            <button type="button" class="btn btn-lg" data-copy="#prompt-text" data-copied="copied. paste it to your agent">
-              copy prompt for your agent
+            <button type="button" class="btn btn-lg" data-copy="#prompt-text" data-copied={art.agent ? 'copied. paste it to your agent' : 'copied'}>
+              {art.agent ? 'copy prompt for your agent' : 'copy prompt'}
             </button>
             <a href={REPO_URL} target="_blank" rel="noopener" class="btn btn-lg">
               ★ star on github{stars ? <span class="mono btn-count">{formatStars(stars)}</span> : null}
@@ -358,9 +362,9 @@ app.get('/art/:slug', (c) => {
               </p>
             </section>
 
-            {art.kind === 'live' ? (
+            {art.kind !== 'image' ? (
               <a href={art.src} target="_blank" rel="noopener" class="btn btn-ghost">
-                open the piece in a new tab ↗
+                {art.kind === 'video' ? 'open the video in a new tab ↗' : 'open the piece in a new tab ↗'}
               </a>
             ) : null}
           </aside>
