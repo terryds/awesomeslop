@@ -1,5 +1,5 @@
 {
-  "title": "window light",
+  "title": "close-up portrait",
   "category": "ai-video",
   "date": "2026-11-26",
   "summary": "A ten-second extreme close-up of a woman by a window on an overcast day: she glances right, blinks, turns slowly into profile and back. Every blink, eye movement and strand of hair is scripted to the second in the prompt.",
@@ -13,5 +13,5 @@
     "input": "the prompt asks the model to keep the face from a first-frame reference image"
   },
   "cover": "cover.jpg",
-  "video": "window-light.mp4"
+  "video": "close-up-portrait.mp4"
 }

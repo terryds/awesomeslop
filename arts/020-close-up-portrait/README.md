@@ -1,4 +1,4 @@
-# window light
+# close-up portrait
 
 Ten seconds, one continuous take, very close to a face. She looks at the camera, glances to the right, blinks twice, closes her eyes for a moment, turns slowly toward the window into profile, raises her eyes, then turns back and finds the camera again.
 
