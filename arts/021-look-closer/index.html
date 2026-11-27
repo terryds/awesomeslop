@@ -79,7 +79,7 @@ const SCENES = [
       ell(g, .66, .885, .05, .022, '#2b2522'); ell(g, .7, .875, .018, .016, '#2b2522'); poly(g, [[.69, .862], [.695, .848], [.702, .86]], '#2b2522'); poly(g, [[.705, .86], [.712, .847], [.716, .862]], '#2b2522');
       glow(g, .5, .5, .45, '#ffcf8a', .12);
     },
-    frame(g, r) { goldFrame(g, .028); glow(g, .5, .5, .3, '#ffdca0', .06); } },
+    frame(g, r) { goldFrame(g, .028); } },
   // 1 · an autumn street at sunset, the bakery window
   { name: 'street', flow: (x, y) => (y < .2 ? 0.1 : Math.PI / 2 + Math.sin(y * 30) * .1),
     draw(g, r) {
@@ -103,8 +103,7 @@ const SCENES = [
       glow(g, .5, .5, .25, '#ffcf80', .25);   // the window's warm light spills out
     },
     late(g) { g.fillStyle = '#f3d9a0'; g.font = 'bold 0.06px Georgia'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('BAKERY', .5, .152); },
-    frame(g, r) { woodFrame(g, .022, '#5a2e22', '#8a4a30'); rect(g, H0 - .03, H1 + .015, (H1 - H0) + .06, .022, '#6a3a26');
-      g.save(); g.globalAlpha = .08; rect(g, H0, H0, (H1 - H0) * .35, H1 - H0, '#ffffff'); g.restore(); } },
+    frame(g, r) { woodFrame(g, .022, '#5a2e22', '#8a4a30'); rect(g, H0 - .03, H1 + .015, (H1 - H0) + .06, .022, '#6a3a26'); } },
   // 2 · inside the bakery, a postcard pinned to the wall
   { name: 'bakery', flow: (x, y) => Math.sin(x * 9 + y * 7) * .6,
     draw(g, r) {
@@ -128,7 +127,7 @@ const SCENES = [
     frame(g, r) { // a postcard: cream border, a pin, a little shadow
       g.save(); g.fillStyle = 'rgba(60,35,15,.35)'; g.fillRect(H0 - .02 + .012, H0 - .02 + .016, (H1 - H0) + .04, (H1 - H0) + .055); g.restore();
       holeBorder(g, .02, '#f6efdf', .035); g.fillStyle = '#7a5a40'; g.font = 'italic 0.018px Georgia'; g.textAlign = 'center'; g.fillText('greetings from the lake', .5, H1 + .032);
-      ell(g, .5, H0 - .01, .012, .012, '#c23a2e'); ell(g, .497, H0 - .013, .004, .004, '#f2a090'); } },
+      ell(g, .5, H0 - .012, .008, .008, '#c23a2e'); ell(g, .498, H0 - .014, .003, .003, '#f2a090'); } },
   // 3 · a frozen lake at blue hour, a square hole cut in the ice
   { name: 'lake', flow: (x, y) => (y < .3 ? 0.15 : 0.02),
     draw(g, r) {
@@ -150,7 +149,7 @@ const SCENES = [
       glow(g, .5, .9, .4, '#ffffff', .1);
     },
     frame(g, r) { // the hole's thick ice rim, lit on top, with chunks
-      holeBorder(g, .03, '#e2e8f6', 0); g.save(); g.fillStyle = 'rgba(80,100,150,.35)'; g.fillRect(H0, H0, H1 - H0, .02); g.fillRect(H0, H0, .015, H1 - H0); g.restore();
+      holeBorder(g, .03, '#e2e8f6', 0); holeBorder(g, .008, '#8a9cc8', 0);
       for (let i = 0; i < 14; i++) { const a = r() * 4 | 0, t = H0 + r() * (H1 - H0), o = .035 + r() * .03; const [x, y] = [[t, H0 - o], [t, H1 + o], [H0 - o, t], [H1 + o, t]][a]; poly(g, [[x - .012, y], [x, y - .01], [x + .014, y + .002], [x, y + .011]], '#f4f7fc'); } } },
   // 4 · a reef, a gilded frame sunk in the sand
   { name: 'reef', flow: (x, y) => Math.PI / 2 + Math.sin(x * 14) * .35,
@@ -176,7 +175,7 @@ function goldFrame(g, w) {
   holeBorder(g, w, '#8a6424', 0); holeBorder(g, w * .7, '#c8962e', 0); holeBorder(g, w * .35, '#e8c46a', 0); holeBorder(g, w * .12, '#6a4a1a', 0);
   for (const [x, y] of [[H0 - w * .5, H0 - w * .5], [H1 + w * .5, H0 - w * .5], [H0 - w * .5, H1 + w * .5], [H1 + w * .5, H1 + w * .5]]) ell(g, x, y, w * .7, w * .7, '#e8c46a');
 }
-function woodFrame(g, w, a, b) { holeBorder(g, w, a, 0); holeBorder(g, w * .5, b, 0); g.fillStyle = a; g.fillRect(.5 - .004, H0, .008, H1 - H0); g.fillRect(H0, .5 - .004, H1 - H0, .008); }
+function woodFrame(g, w, a, b) { holeBorder(g, w, a, 0); holeBorder(g, w * .5, b, 0); }
 
 // ---------- paint one scene: shapes, then a pass of short brush strokes, then cut the hole and lay the frame ----------
 function paint(i) {
