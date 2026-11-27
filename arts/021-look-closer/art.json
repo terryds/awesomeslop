@@ -1,0 +1,21 @@
+{
+  "title": "look closer",
+  "category": "animations",
+  "date": "2026-11-27",
+  "summary": "An endless zoom through five paintings, each one in the middle of the last: a room at night, an autumn street, a bakery, a frozen lake, a reef, and the room again. Painted in code with short brush strokes.",
+  "model": "Claude Opus 5.5",
+  "agent": "Claude Code",
+  "medium": "infinite zoom, canvas 2d, single file",
+  "tags": ["infinite zoom", "painting", "brush strokes", "loop", "procedural", "room", "bakery", "autumn", "winter", "reef", "droste"],
+  "specs": {
+    "paintings": "5, each 2048 × 2048, painted when the page loads",
+    "the trick": "every painting has a transparent square in the middle, a third of its width, framed by something in the scene; the next painting is drawn behind it at a third of the size",
+    "the chain": "a framed painting on a wall → a bakery window → a postcard → a hole in the ice → a gilded frame sunk in the sand → the first room",
+    "brush": "about 90,000 short strokes per painting, each taking its colour from the shapes underneath and its direction from a flow field",
+    "controls": "scroll, drag or the arrow keys to walk in or back out; space pauses; left alone it drifts inward",
+    "libraries": "none",
+    "assets": "none",
+    "inspired by": "the infinite zoom website by @kevin_t_ngo, posted on X (the format only: his paintings were generated images; these five are drawn in code)"
+  },
+  "cover": "cover.jpg"
+}

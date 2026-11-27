@@ -1,0 +1,13 @@
+Make an infinite zoom through a loop of paintings, as a single HTML file with canvas 2D. No image generation and no assets: paint every scene in code.
+
+Five paintings, each square. In the middle of each one is a framed square a third of its width, and inside that square is the next painting, so zooming in walks you from one into the next forever:
+
+1. A cosy room at night: green striped wallpaper, a window with the moon and red curtains, an armchair, a floor lamp, a cat asleep on a round rug. On the wall, a gold-framed painting of…
+2. …an autumn street at sunset: houses with lit windows, orange trees, a lamp post, cobbles and fallen leaves, and in the middle a bakery with a striped awning. Through its big window…
+3. …the inside of the bakery: shelves of bread, hanging lamps, bunting, a glass counter of pastries. Pinned to the back wall, a postcard of…
+4. …a frozen lake at blue hour: snowy mountains, pines, a cabin with a lit window and smoke, an ice-fishing stool and rod. In the ice, a square hole looking down into…
+5. …a reef: light rays, coral, kelp, fish and bubbles, and half-buried in the sand a gilded frame that holds the first room again.
+
+Make it look painted: draw the shapes first, then repaint each scene with tens of thousands of short brush strokes that take their colour from what is underneath and their direction from a flow field, plus a faint canvas weave and a soft vignette. Each frame around the hole is drawn crisply on top, so the inner painting sits behind it.
+
+It drifts inward slowly on its own. Scroll, drag or the arrow keys walk in or back out; space pauses. Add ?capture=SIZE for a fixed square canvas you can record frame by frame.
